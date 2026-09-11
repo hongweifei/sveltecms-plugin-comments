@@ -1,0 +1,129 @@
+# 评论插件功能文档
+
+SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发见仓根 README。
+
+## 目录
+
+- [概念模型](#概念模型)
+- [评论状态机](#评论状态机)
+- [站点级配置（站长）](#站点级配置站长)
+- [内容级设置（创作者）](#内容级设置创作者)
+- [前台能力](#前台能力)
+- [管理端能力](#管理端能力)
+- [数据表](#数据表)
+- [API 端点](#api-端点)
+- [反滥用与安全](#反滥用与安全)
+
+## 概念模型
+
+- **双键绑定**：每条评论绑定到「页面路径 `path`」或「内容项 `contentId`（+ `contentType` 判别集合）」至少其一，两条链路在提交/列表/计数全链路等价。前台优先按内容项 id 绑定（主题注入的 `window.__CMS_PAGE__`），无 id 时回落 URL 路径。
+- **无限嵌套回复**：`parentId` 指向任意已审核父评论；`rootId` 恒指向所在根评论。列表按顶层分页、后代按 `rootId` 一次带出，前台平铺在根评论下一层（回复内容带「回复 @目标」前缀，点击跳转定位），避免层层缩进。
+- **访客身份**：游客用昵称（可选）/ 邮箱（默认必填，仅存储）/ 主页（可选）；提交者指纹 `visitorId` = SHA-256(当日盐 + IP + UA)，**每日轮换**（当日内的「本人待审可见」、点赞去重与限频按它归人，跨日视为新访客——登录用户不受此限，恒按 `userId` 归身份），昵称/头像实时反查 user 表（manifest 声明只读 `user`），账号改名换头像即刻生效。
+- **环境信息**：服务端从 UA 解析系统/浏览器、从 IP 异步解析归属地（best-effort，失败留空；内网地址标注「内网」）。
+
+## 评论状态机
+
+```
+提交 ──(审核开启)──→ pending ──(后台通过)──→ approved ⇄ (回待审/标垃圾)
+   └─(审核关闭)──→ approved（免审直发）
+黑名单命中 / 举报达阈值(3 次) → spam / 回 pending
+```
+
+- `pending`：仅作者本人可见（按 `visitorId`/`userId` 匹配，带「审核中」标记，审核通过后即时公开）
+- `approved`：公开可见
+- `spam`：仅管理端可见
+- **官方回复免审**：站方成员（角色含 appAccess，即后台可登录的管理员/编辑）经管理端行内回复直接 `approved` + `official` 徽章
+- 新评论一律服务端强制 `pending`（客户端传入状态不可信），审核关闭时才直发
+
+## 站点级配置（站长）
+
+后台「插件管理 → comments → 配置」。核心职责边界：**站点级是纯白名单**（只配置"哪里开"），"关闭"动作归创作者内容级设置。
+
+| 键 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `moderation` | boolean | 开 | 评论审核；关闭则发布即公开（fail-safe：缺省按开） |
+| `allowGuest` | boolean | 开 | 允许游客评论；关闭则仅登录用户可评 |
+| `guestEmailOptional` | boolean | 关 | 开：游客邮箱可留空（表单去必填；关：邮箱必填，作 gravatar 头像源） |
+| `hideEnv` | boolean | 关 | 开：前台隐藏系统/浏览器/IP 属地，仅管理端可见 |
+| `maxLength` | number | 500 | 单条最大字数（0 = 不限；另有服务端硬上限 2000 兜底） |
+| `minInterval` | number | 0 | 同一访客两次提交的最小间隔秒数（0 = 不限；超限 429 + Retry-After） |
+| `notifyAuthor` | boolean | 开 | 新评论**站内**通知内容作者（落具体内容项时定向创作者；非本人评论才发） |
+| `notifyReplies` | boolean | 开 | 收到回复**邮件**通知被回复者（需 SMTP）；审核开启时延迟到回复**通过后**补发，且同一回复只通知一次 |
+| `enabledPaths` | multiselect | 空 | 开启评论的页面路径白名单（可手输任意路径） |
+| `enabledTypes` | multiselect | 空 | 开启评论的内容类型（集合 slug）白名单 |
+
+两个白名单留空 = 全站不开启（插件装上后默认静默）。值以字符串落库，布尔两种形态都认。
+
+## 内容级设置（创作者）
+
+内容编辑表单底部（`collection-form-fields-after` 插槽）——仅在站点白名单命中的集合上出现：
+
+| 设置 | 语义 |
+|---|---|
+| 关闭评论 | 该内容不显示评论区（站点开着也可以单点关） |
+| 仅登录可评 | 游客见「登录后可评论」提示 |
+| 仅展示精选 | 公众号式：人工精选的已审核评论才对外可见 |
+
+存 `plugin_comments_content_settings`（contentId+contentType 归属，path 绑定经 pages 记录桥反查，两视图等价消费）。
+
+## 前台能力
+
+- 发表评论（游客三字段 localStorage 记住；登录用户只见正文框——身份由服务端会话判定，`/list` 响应 `viewer` 字段下发登录态）
+- 无限嵌套回复、@目标点击跳转（平滑滚动 + 落点高亮）、回复前缀
+- 分页「加载更多」；顶层页后代按全局上限 500 条带出（防读放大护栏），被截断的线程标注给前端出「查看更多回复」，经 `/children` 精确续拉不重不漏
+- 点赞（幂等，按 visitor/user 去重，刷新后红心持久）
+- 举报（可选理由，累加计数）
+- 编辑 / 删除自己的评论（登录者按 userId 任意本人评论；游客按 visitorId 限本人待审——撤回场景。已过审评论被编辑且站点审核开启时，自动回 pending 重审，防「通过后再改违规内容」）。删除不留孤儿子树：删顶层 = 级联删整条线程；删回复 = 其直接子回复改挂到其父
+- 头像：邮箱 md5 → cravatar.cn（gravatar 国内镜像，`d=404`——无对应头像时返 404）；无邮箱或 404 回退首字母色块（色相按昵称散列）；登录用户头像走 user 表实时值
+- 官方徽章（主色调）、作者徽章（内容作者评论派生「作者」，中性色与官方分层）、设备环境行（`Windows 11 · Edge · 浙江`）
+- 计数与标题区评论数联动（组件头部）；精选模式下公开计数同样只算精选（`/count` 尊重 `featuredOnly`），供主题/自定义 UI 复用该端点
+- 文案 i18n：zh/en 由 `/api/v1/i18n/comments` 按访客语言下发
+
+## 管理端能力
+
+- **审核工作台**：通用内容列表（`comments` 集合）——状态/官方/作者/昵称/邮箱/内容/路径/系统/浏览器/属地列，`status/likes/reports/createdAt` 可排序，内容搜索；批量通过/标垃圾/回待审；行展开可直接回复（免审+官方标）
+- **待审直达**：新评论进入 `pending` 时向管理员发站内通知，深链带 `filter_status=pending` 一键进队列（举报自动回待审的不再重复通知，随队列处理）
+- **关键词黑名单**：存 `plugin_comments_settings`，经 `/admin/settings` 读写（GET 返回词表；POST 逗号/换行分隔的原始串覆盖）——目前仅提供 API，暂无管理 UI（已知缺口）
+- 新评论落库后广播自定义事件 `comments:submitted`，宿主/其他插件可订阅做扩展（如管理员推送增强）
+- **编辑表单门控**：`/admin/eligible` 判定某内容是否可评（站点白名单命中），内容编辑表单的创作者设置插槽据此整体显隐
+
+## 数据表
+
+| 表 | 用途 |
+|---|---|
+| `plugin_comments_comments` | 评论主表（双绑定、嵌套、状态、存证字段） |
+| `plugin_comments_likes` | 点赞（按 commentId + 身份（userId/visitorId）应用层幂等去重） |
+| `plugin_comments_settings` | 站点 KV（黑名单词） |
+| `plugin_comments_content_settings` | 内容级设置（closed/requireLogin/featuredOnly） |
+
+举报计数与精选标记是主表列（`reports`/`reportReasons`/`featured`），无独立表。
+
+## API 端点
+
+挂载 `/api/v1/plugin/comments/`。public = 免登录；其余管理员会话。
+
+| 端点 | 档 | 说明 |
+|---|---|---|
+| `POST /submit` | public | 提交（蜜罐 204 静默、黑名单静默 spam、限流 IP+minInterval、验证码按 forms 作用域要求） |
+| `GET /list` | public | 顶层分页 + 后代带出 + likedIds + 本人待审并入 + `viewer`/`canOfficial`/设置下发 |
+| `GET /children` | public | 超长线程续拉（rootId + after 偏移） |
+| `GET /count` | public | 计数（featuredOnly 尊重） |
+| `POST /like` `POST /report` `POST /delete` `POST /edit` | public | 互动（身份匹配校验在服务端） |
+| `POST /admin/reply` `POST /admin/feature` `GET/POST /admin/settings` `GET/POST /admin/content-settings` `GET /admin/eligible` | admin | 管理端七类 |
+
+## 反滥用与安全
+
+- **蜜罐字段** `_hp`：视觉隐藏非 `display:none`，机器人填写 → 204 静默成功（不落库，无从探测）
+- **黑名单**：关键词命中 → 静默进 spam（对外仍 success），管理员事后处置
+- **举报自动化**：累计 3 次 → approved 自动回 pending（进审核队列）
+- **限流**：提交 5 次/分钟/IP，点赞 30、举报 5、删除/编辑各 10 次/分钟/IP（另有 minInterval 按访客抑制连发）；429 带 Retry-After
+- **人机校验**：站点 captcha 开 forms 作用域时前台渲染验证码输入（复用框架 CaptchaEngine）
+- **数据投影**：对外剥离 `userId`/`visitorId`/email 明文——email 只出 md5 哈希（头像源），`hideEnv` 可再收设备环境
+- **权限声明**：只读 `user`（头像昵称反查）、`pages`（路径↔记录桥）、`roles`（官方标判定）；写全部限本插件前缀表
+- **状态不可信原则**：客户端传入 status/official 一律忽略，由服务端按会话与设置裁定
+
+## 已知限制
+
+- 匿名页有 60s 公共缓存——评论一律客户端 fetch，SSR 不含实时评论
+- 表结构演进半自动：框架在每次注册时对插件表 `CREATE IF NOT EXISTS` + 比对现有列自动 `ALTER TABLE ADD`（**加列零运维**）；但删列/改类型/放宽约束是 SQLite 无法自动做的破坏性变更——只能弃用留列（如 `avatar` 快照列的处置）或站长手动重建，此类变更会写入 Release notes
+- `region` 内网/环回地址标注「内网」；第三方 IP 库不可达时留空（best-effort）
