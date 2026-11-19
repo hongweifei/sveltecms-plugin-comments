@@ -7,6 +7,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { emailAvatarUrl } from '$lib/cms/utils/user-avatar';
 import type { CommentBinding } from './validate';
 import { resolveBinding } from './validate';
+import type { PublicComment } from './shared';
 
 /** JSON 响应辅助（默认 application/json；headers 用于 429 retry-after 等） */
 export function json(
@@ -144,7 +145,7 @@ export function toPublic(
 	mine: boolean,
 	userBy?: ReadonlyMap<string, ResolvedUser>,
 	opts?: { hideEnv?: boolean; contentAuthorId?: string | null }
-) {
+): PublicComment {
 	const email = typeof row.email === 'string' && row.email ? row.email : null;
 	const snapshot = typeof row.avatar === 'string' && row.avatar ? row.avatar : null;
 	const live = row.userId ? userBy?.get(String(row.userId)) : undefined;

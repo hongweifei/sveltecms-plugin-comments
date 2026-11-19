@@ -23,6 +23,13 @@ export const messages: Record<string, Record<string, string>> = {
 		en: 'Optional: why are you reporting this?'
 	},
 	websiteLabel: { zh: '主页（可选）', en: 'Website (optional)' },
+	// 相对时间（前台 timeOf 取词）：此前在组件里硬编码中英双语，
+	// 站点接入第三语言时只能二选一，且 <html lang> 未设时恒落到英文分支。
+	// 带占位符 {n}，由前端替换计数。
+	timeJustNow: { zh: '刚刚', en: 'just now' },
+	timeMinutesAgo: { zh: '{n} 分钟前', en: '{n}m ago' },
+	timeHoursAgo: { zh: '{n} 小时前', en: '{n}h ago' },
+	timeDaysAgo: { zh: '{n} 天前', en: '{n}d ago' },
 	submit: { zh: '发表评论', en: 'Post comment' },
 	submitReply: { zh: '回复', en: 'Reply' },
 	submitting: { zh: '发布中…', en: 'Posting…' },

@@ -3,26 +3,49 @@
  * 在此归一/拒绝。不依赖任何运行时状态，独立单测。
  */
 
-export const MAX_CONTENT_LENGTH = 2000;
-export const MAX_AUTHOR_NAME_LENGTH = 40;
-export const MAX_PATH_LENGTH = 300;
-export const MAX_ID_LENGTH = 64;
-export const MAX_KEYWORDS = 200;
-export const MAX_KEYWORD_LENGTH = 50;
-export const MAX_EMAIL_LENGTH = 100;
-export const MAX_WEBSITE_LENGTH = 200;
-export const MAX_REPORT_REASON_LENGTH = 200;
-/** C2：举报理由只保留最近若干条（防单条评论理由无限堆积） */
-export const MAX_REPORT_REASONS = 10;
-export const REPORT_AUTO_PENDING_THRESHOLD = 3;
-export const PAGE_SIZE_DEFAULT = 20;
+// 长度上限与分页常量：与客户端共享（shared.ts）——前端据此设 maxlength、
+// 分页参数，服务端据此校验。此前两边各写一份，站点改配置后前端上限不动，
+// 用户输到上限被服务端 400 拒绝且无提示。
+//
+// 同时 import 与 re-export：本模块内多处直接引用这些常量（`export { X } from`
+// 只重导出、不在本地绑定作用域，两种写法不能混用）。
+import {
+	MAX_CONTENT_LENGTH,
+	MAX_AUTHOR_NAME_LENGTH,
+	MAX_PATH_LENGTH,
+	MAX_ID_LENGTH,
+	MAX_KEYWORDS,
+	MAX_KEYWORD_LENGTH,
+	MAX_EMAIL_LENGTH,
+	MAX_WEBSITE_LENGTH,
+	MAX_REPORT_REASON_LENGTH,
+	MAX_REPORT_REASONS,
+	REPORT_AUTO_PENDING_THRESHOLD,
+	PAGE_SIZE_DEFAULT,
+	PAGE_SIZE_MAX
+} from './shared';
+
+export {
+	MAX_CONTENT_LENGTH,
+	MAX_AUTHOR_NAME_LENGTH,
+	MAX_PATH_LENGTH,
+	MAX_ID_LENGTH,
+	MAX_KEYWORDS,
+	MAX_KEYWORD_LENGTH,
+	MAX_EMAIL_LENGTH,
+	MAX_WEBSITE_LENGTH,
+	MAX_REPORT_REASON_LENGTH,
+	MAX_REPORT_REASONS,
+	REPORT_AUTO_PENDING_THRESHOLD,
+	PAGE_SIZE_DEFAULT,
+	PAGE_SIZE_MAX
+};
 
 /**
  * 集合 slug 形态（与脚手架 constants 的 SAFE_SLUG_RE 同形）。本模块为独立单测
  * 的纯函数层、零 import，故本地定义而非引入。
  */
 const CONTENT_TYPE_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/;
-export const PAGE_SIZE_MAX = 50;
 
 /**
  * 归一页面路径：去 query/hash、折叠尾斜杠（根路径 "/" 保留）、限长。
