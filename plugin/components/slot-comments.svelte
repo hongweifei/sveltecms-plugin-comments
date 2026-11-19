@@ -20,26 +20,22 @@
 	import { onMount } from 'svelte';
 	import { getCsrfToken } from '$lib/common/utils/csrf';
 	import { loadPluginMessages } from '$lib/cms/utils/i18n-client';
+	import {
+		MAX_AUTHOR_NAME_LENGTH,
+		MAX_EMAIL_LENGTH,
+		MAX_WEBSITE_LENGTH,
+		MAX_CONTENT_LENGTH,
+		type PublicComment,
+		type CommentListBody,
+		type CommentSubmitBody
+	} from '../shared';
+	import { formatRelativeTime, letterOf, hueOf } from '../client/format';
+	import CaptchaField from './CaptchaField.svelte';
+	import EmojiPicker from './EmojiPicker.svelte';
 
-	interface CommentItem {
-		id: string;
-		authorName: string | null;
-		content: string;
-		createdAt: string;
-		parentId: string | null;
-		rootId: string | null;
-		official: boolean;
-		/** 作者标：内容作者在自己内容下评论，服务端自动判定（无需勾选） */
-		isAuthor: boolean;
-		likes: number;
-		avatar: string | null;
-		website: string | null;
-		os: string | null;
-		browser: string | null;
-		region: string | null;
-		mine: boolean;
-		pending: boolean;
-	}
+	/** 评论项：与服务端 toPublic() 共享同一类型（shared.ts）——
+	    此前本地手写一份，服务端加了 featured 客户端就漏字段（静默错位）。 */
+	type CommentItem = PublicComment;
 
 	let mounted = $state(false);
 	let tops = $state<CommentItem[]>([]);
@@ -92,6 +88,12 @@
 	let siteEnabled = $state(true);
 	/** B2b：站点开启「游客邮箱可留空」时输入框去掉必填（服务端同步放行） */
 	let guestEmailOptional = $state(false);
+	/**
+	 * 正文上限（站点可配，/list 下发）：先前硬编码 2000（服务端硬上限），
+	 * 而站点默认配 500——用户能输 2000 字却在提交时被 400 拒绝，前台只给
+	 * 一句笼统的「失败」。取服务端下发值，服务端硬上限作兜底。
+	 */
+	let maxContentLength = $state(MAX_CONTENT_LENGTH);
 	/** 官方标（可选）：/list canOfficial=true（登录站方成员）时表单出「官方」勾选 */
 	let canOfficial = $state(false);
 	let markOfficial = $state(false);
@@ -163,8 +165,27 @@
 		editedFailed: tr('editedFailed'),
 		captchaLabel: tr('captchaLabel'),
 		captchaPlaceholder: tr('captchaPlaceholder'),
-		captchaFailed: tr('captchaFailed')
+		captchaFailed: tr('captchaFailed'),
+		timeJustNow: tr('timeJustNow'),
+		timeMinutesAgo: tr('timeMinutesAgo'),
+		timeHoursAgo: tr('timeHoursAgo'),
+		timeDaysAgo: tr('timeDaysAgo')
 	});
+
+	/**
+	 * 相对时间（客户端组件，无 SSR 水合顾虑）；超一周回落本地日期。
+	 * 文案走 i18n 词表（t.time*）——此前在函数里硬编码中英双语，站点接入
+	 * 第三语言时无从扩展；且 <html lang> 未设时恒落到英文分支，中文站点
+	 * 也显示「5m ago」。
+	 */
+	function timeOf(iso: string): string {
+		return formatRelativeTime(iso, {
+			justNow: t.timeJustNow,
+			minutesAgo: t.timeMinutesAgo,
+			hoursAgo: t.timeHoursAgo,
+			daysAgo: t.timeDaysAgo
+		});
+	}
 
 	function csrfHeaders(): Record<string, string> {
 		return { 'content-type': 'application/json', 'x-csrf-token': getCsrfToken() };
@@ -188,29 +209,9 @@
 		}
 	}
 
-	interface ListBody {
-		data?: CommentItem[];
-		children?: CommentItem[];
-		hasMore?: boolean;
-		/** 点赞 toggle：本页中当前身份已赞的评论 id（刷新后红心持久） */
-		likedIds?: string[];
-		/** D1：被截断的超长线程（rootId + 已返回后代数 = 续拉起点） */
-		truncatedThreads?: Array<{ rootId: string; loaded: number }>;
-		enabled?: boolean;
-		contentSettings?: {
-			closed: boolean;
-			requireLogin: boolean;
-			featuredOnly: boolean;
-		} | null;
-		captchaRequired?: boolean;
-		/** 官方标（可选）：登录用户是站方成员时前端显示「官方」勾选 */
-		canOfficial?: boolean;
-		/** B2b：站点开关——游客邮箱可留空（表单 required/占位文案随之变） */
-		guestEmailOptional?: boolean;
-		/** 登录态（服务端按会话下发；本应用 better-auth 端点不走 HTTP，
-		 * 组件无法自行探测）：非空即登录，隐藏身份输入 */
-		viewer?: { name: string } | null;
-	}
+	/** /list 响应体：与服务端共享同一类型（shared.ts）——此前本地手写一份，
+	    服务端新增 maxLength/minInterval 等字段时前端会静默丢弃。 */
+	type ListBody = CommentListBody;
 
 	async function fetchList(targetPage: number): Promise<ListBody> {
 		const res = await fetch(
@@ -255,6 +256,7 @@
 			loadFailed = false;
 			siteEnabled = body.enabled ?? true;
 			guestEmailOptional = body.guestEmailOptional ?? false;
+			maxContentLength = body.maxLength ?? MAX_CONTENT_LENGTH;
 			canOfficial = body.canOfficial ?? false;
 			// 登录态由 /list 服务端按会话下发（本地无 better-auth HTTP 端点可探测）
 			if (body.viewer) account = { name: body.viewer.name };
@@ -421,19 +423,84 @@
 	}
 
 	/** /submit 回传的是 toPublic 投影 + status，与 /list 单条同构 */
-	interface SubmitBody {
-		comment?: CommentItem & { status: string };
-	}
+	/** /submit 响应体：与服务端共享（shared.ts） */
+	type SubmitBody = CommentSubmitBody;
 
 	function afterSubmit(body: SubmitBody) {
 		const item = body.comment;
 		if (!item || item.status === 'spam') return;
 		// 直接用服务端投影：头像、环境信息、主页、归属全部权威，
 		// 前端不再猜（此前 avatar 恒为 null → 新评论只显示字母色块，刷新后才正确）
-		localInsert(item);
+		// 解构掉 status（服务端附加的审核态列，不属于公开投影）
+		const { status: _status, ...publicItem } = item;
+		localInsert(publicItem);
 		// 是否待审由服务端判定（审核开关关闭时直接 approved，提示语随之变化）
 		submittedPending = item.pending;
 		saveVisitor();
+	}
+
+	/**
+	 * 提交（顶层评论与回复共用）。
+	 *
+	 * 此前 submit() 与 submitReply() 是两份 90% 相同的实现——同为 POST
+	 * /submit、同一套 429 / 204 / 2xx / 403 四分支处理，只有「清哪些输入
+	 * 字段」与「用哪个 busy 标志」不同。两份各写一遍的代价是：改一处分支
+	 * 忘了另一处（如加验证码重试时只改了一个），行为随提交入口不同而分叉。
+	 *
+	 * 现在共用一条路径，差异以参数传入：
+	 * - kind：决定成功后清理哪组字段
+	 * - busy 标志由调用方自行置位/复位（提交期间禁用按钮）
+	 */
+	async function postComment(
+		kind: 'main' | 'reply'
+	): Promise<'ok' | 'spam' | 'failed' | 'ratelimited' | 'captcha'> {
+		try {
+			const res = await fetch(`${BASE}/submit`, {
+				method: 'POST',
+				headers: csrfHeaders(),
+				body: JSON.stringify(buildPayload())
+			});
+			if (res.status === 429) {
+				errorMsg = t.tooFast;
+				return 'ratelimited';
+			}
+			if (res.status === 204) {
+				// 蜜罐命中：服务端静默成功，无响应体——不可调 json()（会抛错落进
+				// catch 显示「操作失败」，等于告诉机器人被拦了）。按成功收尾。
+				submitted = true;
+				clearInputs(kind);
+				return 'ok';
+			}
+			if (res.ok) {
+				afterSubmit((await res.json()) as SubmitBody);
+				submitted = true;
+				clearInputs(kind);
+				if (captchaRequired) loadCaptcha();
+				return 'ok';
+			}
+			// CAPTCHA 失败（403 + Captcha 文案）：换新挑战让用户重试
+			const captchaFailed = await isCaptchaFailure(res);
+			errorMsg = captchaFailed ? t.captchaFailed : t.failed;
+			if (captchaFailed && captchaRequired) loadCaptcha();
+			return captchaFailed ? 'captcha' : 'failed';
+		} catch {
+			errorMsg = t.failed;
+			return 'failed';
+		}
+	}
+
+	/** 提交成功后清理对应入口的输入字段 */
+	function clearInputs(kind: 'main' | 'reply') {
+		if (kind === 'main') {
+			content = '';
+			replyTo = null;
+			replyContent = '';
+			markOfficial = false;
+		} else {
+			replyContent = '';
+			replyTo = null;
+			replyOfficial = false;
+		}
 	}
 
 	async function submit(e: SubmitEvent) {
@@ -443,37 +510,7 @@
 		submitted = false;
 		submitting = true;
 		try {
-			const res = await fetch(`${BASE}/submit`, {
-				method: 'POST',
-				headers: csrfHeaders(),
-				body: JSON.stringify(buildPayload())
-			});
-			if (res.status === 429) {
-				errorMsg = t.tooFast;
-			} else if (res.status === 204) {
-				// 蜜罐命中：服务端静默成功，无响应体——不可调 json()（会抛错落进
-				// catch 显示「操作失败」，等于告诉机器人被拦了）。按成功收尾。
-				submitted = true;
-				content = '';
-				replyTo = null;
-				replyContent = '';
-				markOfficial = false;
-			} else if (res.ok) {
-				afterSubmit((await res.json()) as SubmitBody);
-				submitted = true;
-				content = '';
-				replyTo = null;
-				replyContent = '';
-				markOfficial = false;
-				if (captchaRequired) loadCaptcha();
-			} else {
-				// CAPTCHA 失败（403 + Captcha 文案）：换新挑战让用户重试
-				const captchaFailed = await isCaptchaFailure(res);
-				errorMsg = captchaFailed ? t.captchaFailed : t.failed;
-				if (captchaFailed && captchaRequired) loadCaptcha();
-			}
-		} catch {
-			errorMsg = t.failed;
+			await postComment('main');
 		} finally {
 			submitting = false;
 		}
@@ -484,31 +521,7 @@
 		replying = true;
 		errorMsg = '';
 		try {
-			const res = await fetch(`${BASE}/submit`, {
-				method: 'POST',
-				headers: csrfHeaders(),
-				body: JSON.stringify(buildPayload())
-			});
-			if (res.status === 429) {
-				errorMsg = t.tooFast;
-			} else if (res.status === 204) {
-				// 蜜罐命中：静默成功，无响应体（同上）
-				replyContent = '';
-				replyTo = null;
-				replyOfficial = false;
-			} else if (res.ok) {
-				afterSubmit((await res.json()) as SubmitBody);
-				replyContent = '';
-				replyTo = null;
-				replyOfficial = false;
-				if (captchaRequired) loadCaptcha();
-			} else {
-				const captchaFailed = await isCaptchaFailure(res);
-				errorMsg = captchaFailed ? t.captchaFailed : t.failed;
-				if (captchaFailed && captchaRequired) loadCaptcha();
-			}
-		} catch {
-			errorMsg = t.failed;
+			await postComment('reply');
 		} finally {
 			replying = false;
 		}
@@ -566,13 +579,6 @@
 	}
 
 	// ─── emoji 选择器（C2-5，纯前端轻量起步） ───
-
-	const EMOJIS = [
-		'😀','😂','🤣','😊','😍','🤔','😎','😭','😅','🙃',
-		'👍','👎','👏','🙏','💪','🤝','❤️','💔','✨','🔥',
-		'🎉','🎯','💡','📌','🚀','🌟','😢','😡','🤯','🥳',
-		'🐶','🐱','🌻','☕','🍕','🎨','📖','🎵','⚡','🌈'
-	];
 
 	/** 面板展开方向：默认从按钮向右；按钮距表单右缘放不下 264px 时贴右缘向左 */
 	let emojiAlign = $state<'left' | 'right'>('left');
@@ -699,40 +705,6 @@
 		}
 	}
 
-	function letterOf(name: string | null): string {
-		return ((name ?? '').replace(/\s/g, '')[0] ?? '?').toUpperCase();
-	}
-
-	function hueOf(name: string | null): number {
-		let hash = 0;
-		for (let i = 0; i < (name ?? '').length; i++) hash = (hash * 31 + name!.charCodeAt(i)) >>> 0;
-		return hash % 360;
-	}
-
-	// 相对时间（客户端组件，无 SSR 水合顾虑）；超一周回落本地日期
-	function timeOf(iso: string): string {
-		try {
-			// SQLite CURRENT_TIMESTAMP 产出的是 UTC 的 'YYYY-MM-DD HH:MM:SS'，无时区
-			// 标记；直接 new Date() 会被 V8 当本地时间解析（东八区即差 8 小时——
-			// 刚发的评论会显示成「8 小时前」）。补 T/Z 显式按 UTC 解析。
-			const raw = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(iso)
-				? `${iso.replace(' ', 'T')}Z`
-				: iso;
-			const d = new Date(raw);
-			const mins = Math.floor((Date.now() - d.getTime()) / 60000);
-			const zh = document.documentElement.lang.startsWith('zh');
-			if (mins < 1) return zh ? '刚刚' : 'just now';
-			if (mins < 60) return zh ? `${mins} 分钟前` : `${mins}m ago`;
-			const hours = Math.floor(mins / 60);
-			if (hours < 24) return zh ? `${hours} 小时前` : `${hours}h ago`;
-			const days = Math.floor(hours / 24);
-			if (days < 7) return zh ? `${days} 天前` : `${days}d ago`;
-			return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-		} catch {
-			return iso;
-		}
-	}
-
 	/** 回复平铺挂在根评论下（rootId 线程分组），渲染时不再逐层嵌套 */
 	const repliesOf = $derived.by(() => {
 		const map = new Map<string, CommentItem[]>();
@@ -810,20 +782,20 @@
 </script>
 
 {#if mounted}
-	<section class="comments container-content">
-		<h2 class="comments-title">
+	<section class="sc-comments">
+		<h2 class="sc-comments-title">
 			{t.title}
-			{#if count > 0}<span class="comments-count">{count}</span>{/if}
+			{#if count > 0}<span class="sc-comments-count">{count}</span>{/if}
 		</h2>
 
 		<!-- 发表区在列表上方（twikoo 式）。三级联动门控：站点白名单（enabled）→
 		     创作者关闭（contentSettings.closed）→ 创作者要求登录（requireLogin） -->
 		{#if !siteEnabled}
-			<p class="comments-note">{t.siteClosed}</p>
+			<p class="sc-comments-note">{t.siteClosed}</p>
 		{:else if contentSettings?.closed}
-			<p class="comments-note">{t.closed}</p>
+			<p class="sc-comments-note">{t.closed}</p>
 		{:else if contentSettings?.requireLogin && !account}
-			<p class="comments-note">{t.loginToComment}</p>
+			<p class="sc-comments-note">{t.loginToComment}</p>
 		{:else}
 		<form class="composer" onsubmit={submit}>
 			<!-- 蜜罐：视觉隐藏但不在 display:none（防自动填充/爬虫识别），填了即机器人 -->
@@ -846,7 +818,7 @@
 				bind:value={content}
 				bind:this={mainInputEl}
 				rows="3"
-				maxlength="2000"
+				maxlength={maxContentLength}
 				required
 				placeholder={t.placeholder}
 			></textarea>
@@ -858,7 +830,7 @@
 						class="field field-sm"
 						type="text"
 						bind:value={authorName}
-						maxlength="40"
+						maxlength={MAX_AUTHOR_NAME_LENGTH}
 						placeholder={t.nameOptional}
 						autocomplete="name"
 					/>
@@ -867,7 +839,7 @@
 						class="field field-sm"
 						type="email"
 						bind:value={email}
-						maxlength="100"
+						maxlength={MAX_EMAIL_LENGTH}
 						required={!guestEmailOptional}
 						placeholder={guestEmailOptional ? t.emailOptional : t.emailLabel}
 						autocomplete="email"
@@ -877,7 +849,7 @@
 						class="field field-sm"
 						type="url"
 						bind:value={website}
-						maxlength="200"
+						maxlength={MAX_WEBSITE_LENGTH}
 						placeholder={t.websiteLabel}
 						autocomplete="url"
 					/>
@@ -892,11 +864,7 @@
 					>😊</button>
 					<!-- 浮层：从 emoji 按钮上方弹出（右缘对齐、向左展开），不顶起表单 -->
 					{#if emojiFor === 'main'}
-						<div class="emoji-picker" class:is-flip={emojiAlign === "right"}>
-							{#each EMOJIS as e (e)}
-								<button type="button" onclick={() => insertEmoji(e)}>{e}</button>
-							{/each}
-						</div>
+						<EmojiPicker flip={emojiAlign === 'right'} onpick={insertEmoji} />
 					{/if}
 				</span>
 				{#if canOfficial}
@@ -911,43 +879,28 @@
 			</div>
 
 			{#if captchaRequired}
-				<div class="captcha-row">
-					{#if captchaSvg}
-						<!-- 服务端自生成 SVG，可信内容 -->
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-						<div class="captcha-svg">{@html captchaSvg}</div>
-					{:else}
-						<div class="captcha-svg captcha-loading">…</div>
-					{/if}
-					<input
-						class="field field-sm"
-						type="text"
-						bind:value={captchaAnswer}
-						maxlength="10"
-						required
-						autocomplete="off"
-						aria-label={t.captchaLabel}
-						placeholder={t.captchaLabel}
-					/>
-					<button type="button" class="btn btn-sm" disabled={captchaLoading} onclick={loadCaptcha}>
-						↻
-					</button>
-				</div>
+				<CaptchaField
+					svg={captchaSvg}
+					bind:answer={captchaAnswer}
+					loading={captchaLoading}
+					label={t.captchaLabel}
+					onrefresh={loadCaptcha}
+				/>
 			{/if}
 
 			{#if submitted}
-				<p class="comments-note is-success">{submittedPending ? t.moderation : t.published}</p>
+				<p class="sc-comments-note is-success">{submittedPending ? t.moderation : t.published}</p>
 			{:else if errorMsg}
-				<p class="comments-note is-danger">{errorMsg}</p>
+				<p class="sc-comments-note is-danger">{errorMsg}</p>
 			{/if}
 			{#if flash}
-				<p class="comments-note is-success">{flash}</p>
+				<p class="sc-comments-note is-success">{flash}</p>
 			{/if}
 		</form>
 		{/if}
 
 		{#if !loading && (tops.length > 0 || hasMore)}
-			<div class="comments-sort" role="tablist" aria-label="{t.sortLatest}/{t.sortHot}">
+			<div class="sc-comments-sort" role="tablist" aria-label="{t.sortLatest}/{t.sortHot}">
 				<button
 					type="button"
 					class:is-active={sortMode === 'latest'}
@@ -962,13 +915,13 @@
 		{/if}
 
 		{#if loading}
-			<p class="comments-note">…</p>
+			<p class="sc-comments-note">…</p>
 		{:else if loadFailed}
-			<p class="comments-note is-danger">{t.loadFailed}</p>
+			<p class="sc-comments-note is-danger">{t.loadFailed}</p>
 		{:else if tops.length === 0}
-			<p class="comments-empty">{t.empty}</p>
+			<p class="sc-comments-empty">{t.empty}</p>
 		{:else}
-			<div class="comments-list">
+			<div class="sc-comments-list">
 				{#each tops as c (c.id)}
 					<!-- {@const} 必须是 each 的直接子级（Svelte 5 规则），置于 div.thread 之前 -->
 					{@const threadPage = threadPages[c.id]}
@@ -994,7 +947,7 @@
 			</div>
 
 			{#if hasMore}
-				<div class="comments-more">
+				<div class="sc-comments-more">
 					<button type="button" class="btn" disabled={loadingMore} onclick={loadMore}>
 						{loadingMore ? '…' : t.loadMore}
 					</button>
@@ -1048,7 +1001,7 @@
 						class="field"
 						bind:value={editContent}
 						rows="3"
-						maxlength="2000"
+						maxlength={maxContentLength}
 						required
 					></textarea>
 					<div class="reply-form-actions">
@@ -1121,33 +1074,18 @@
 						bind:value={replyContent}
 						bind:this={replyInputEl}
 						rows="2"
-						maxlength="2000"
+						maxlength={maxContentLength}
 						required
 						placeholder={t.replyPlaceholder}
 					></textarea>
 					{#if captchaRequired}
-						<div class="captcha-row">
-							{#if captchaSvg}
-								<!-- 服务端自生成 SVG，可信内容 -->
-								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-								<div class="captcha-svg">{@html captchaSvg}</div>
-							{:else}
-								<div class="captcha-svg captcha-loading">…</div>
-							{/if}
-							<input
-								class="field field-sm"
-								type="text"
-								bind:value={captchaAnswer}
-								maxlength="10"
-								required
-								autocomplete="off"
-								aria-label={t.captchaLabel}
-								placeholder={t.captchaLabel}
-							/>
-							<button type="button" class="btn btn-sm" disabled={captchaLoading} onclick={loadCaptcha}>
-								↻
-							</button>
-						</div>
+						<CaptchaField
+							svg={captchaSvg}
+							bind:answer={captchaAnswer}
+							loading={captchaLoading}
+							label={t.captchaLabel}
+							onrefresh={loadCaptcha}
+						/>
 					{/if}
 					<div class="reply-form-actions">
 						<button
@@ -1158,11 +1096,7 @@
 						>😊</button>
 						<!-- 浮层：同主表单，不顶起操作行 -->
 						{#if emojiFor === 'reply'}
-							<div class="emoji-picker" class:is-flip={emojiAlign === "right"}>
-								{#each EMOJIS as e (e)}
-									<button type="button" onclick={() => insertEmoji(e)}>{e}</button>
-								{/each}
-							</div>
+							<EmojiPicker flip={emojiAlign === 'right'} onpick={insertEmoji} />
 						{/if}
 						{#if canOfficial}
 							<label class="official-check">
@@ -1186,39 +1120,39 @@
 <style>
 	/* 主题未提供语义状态色，本组件内自定义并随 .dark 适配（applyTheme 保证
 	   html 的 .dark class 始终反映实际生效模式，含 auto 档） */
-	.comments {
+	.sc-comments {
 		--c-danger: #dc2626;
 		--c-success: #16a34a;
 	}
-	:global(.dark) .comments {
+	:global(.dark) .sc-comments {
 		--c-danger: #f87171;
 		--c-success: #4ade80;
 	}
 
-	.comments {
-		margin-top: var(--space-8);
-		padding-top: var(--space-8);
+	.sc-comments {
+		margin-top: var(--space-8, 2rem);
+		padding-top: var(--space-8, 2rem);
 		border-top: 1px solid var(--color-border-light);
 		/* 显示自定义钩子（站长在主题 CSS 覆盖）：头像尺寸/间距可按主题微调；
 		   container 查询让评论区随所在容器（全宽 or 侧栏窄栏）自适应布局 */
 		container: comments / inline-size;
 		--comments-avatar-size: 36px;
 		--comments-avatar-size-sm: 28px;
-		--comments-thread-gap: var(--space-3);
+		--comments-thread-gap: var(--space-3, 0.75rem);
 	}
 
-	.comments-title {
+	.sc-comments-title {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
-		font-size: var(--text-lg);
+		gap: var(--space-2, 0.5rem);
+		font-size: var(--text-lg, 1.125rem);
 		font-weight: 600;
-		margin-bottom: var(--space-4);
+		margin-bottom: var(--space-4, 1rem);
 	}
 
-	.comments-count {
-		padding: 0 var(--space-2);
-		font-size: var(--text-xs);
+	.sc-comments-count {
+		padding: 0 var(--space-2, 0.5rem);
+		font-size: var(--text-xs, 0.75rem);
 		font-weight: 500;
 		line-height: 1.7;
 		color: var(--color-text-secondary);
@@ -1228,25 +1162,25 @@
 	}
 
 	/* 平铺列表（twikoo 式）：无线条无卡片，线程之间以留白分隔 */
-	.comments-list {
+	.sc-comments-list {
 		display: grid;
-		gap: var(--space-6);
-		margin-top: var(--space-4);
+		gap: var(--space-6, 1.5rem);
+		margin-top: var(--space-4, 1rem);
 	}
 
 	/* twikoo 式平铺行：无卡片背景/边框，线程之间留白分隔 */
 	.comment {
 		display: flex;
 		gap: var(--comments-thread-gap);
-		padding: var(--space-3) 0;
+		padding: var(--space-3, 0.75rem) 0;
 	}
 	.comment.is-reply {
-		padding: var(--space-2) 0;
+		padding: var(--space-2, 0.5rem) 0;
 	}
 	.comment.is-reply .avatar {
 		width: var(--comments-avatar-size-sm);
 		height: var(--comments-avatar-size-sm);
-		font-size: var(--text-xs);
+		font-size: var(--text-xs, 0.75rem);
 	}
 
 	.avatar {
@@ -1257,7 +1191,7 @@
 		justify-content: center;
 		width: var(--comments-avatar-size);
 		height: var(--comments-avatar-size);
-		font-size: var(--text-sm);
+		font-size: var(--text-sm, 0.875rem);
 		font-weight: 600;
 		color: #fff;
 		background: hsl(var(--hue, 220) 45% 48%);
@@ -1285,11 +1219,11 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--space-2, 0.5rem);
 	}
 
 	.comment-author {
-		font-size: var(--text-sm);
+		font-size: var(--text-sm, 0.875rem);
 		font-weight: 600;
 		color: var(--color-text);
 		text-decoration: none;
@@ -1299,8 +1233,8 @@
 	}
 
 	.badge {
-		padding: 0 var(--space-2);
-		font-size: var(--text-xs);
+		padding: 0 var(--space-2, 0.5rem);
+		font-size: var(--text-xs, 0.75rem);
 		font-weight: 500;
 		line-height: 1.7;
 		color: var(--color-text-secondary);
@@ -1321,14 +1255,14 @@
 
 	.comment-time {
 		margin-left: auto;
-		font-size: var(--text-xs);
+		font-size: var(--text-xs, 0.75rem);
 		color: var(--color-text-muted);
 		white-space: nowrap;
 	}
 
 	.comment-body {
-		margin-top: var(--space-1);
-		font-size: var(--text-sm);
+		margin-top: var(--space-1, 0.25rem);
+		font-size: var(--text-sm, 0.875rem);
 		line-height: 1.7;
 		overflow-wrap: break-word;
 		white-space: pre-wrap;
@@ -1337,18 +1271,18 @@
 	.comment-actions {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
-		margin-top: var(--space-2);
+		gap: var(--space-3, 0.75rem);
+		margin-top: var(--space-2, 0.5rem);
 	}
 	.comment-actions button {
 		padding: 0;
-		font-size: var(--text-xs);
+		font-size: var(--text-xs, 0.75rem);
 		font-family: inherit;
 		color: var(--color-text-muted);
 		background: none;
 		border: none;
 		cursor: pointer;
-		transition: color var(--transition-fast);
+		transition: color var(--transition-fast, 0.18s ease);
 	}
 	.comment-actions button:hover {
 		color: var(--color-primary);
@@ -1367,16 +1301,16 @@
 	/* 回复平铺在根评论下一层（twikoo 式），缩进对齐根评论正文左缘 */
 	.thread {
 		display: grid;
-		gap: var(--space-2);
+		gap: var(--space-2, 0.5rem);
 	}
 	.replies {
 		display: grid;
-		gap: var(--space-2);
+		gap: var(--space-2, 0.5rem);
 		margin-left: calc(var(--comments-avatar-size) + var(--comments-thread-gap));
 	}
 
 	.reply-target {
-		margin-right: var(--space-2);
+		margin-right: var(--space-2, 0.5rem);
 		font-weight: 600;
 		color: var(--color-text-secondary);
 	}
@@ -1389,7 +1323,7 @@
 		background: none;
 		border: none;
 		cursor: pointer;
-		transition: color var(--transition-fast);
+		transition: color var(--transition-fast, 0.18s ease);
 	}
 	.reply-mention:hover {
 		color: var(--color-primary);
@@ -1398,7 +1332,7 @@
 	/* 跳转落点高亮：左侧强调条 + 底色短暂闪动（平滑滚动结束同时开始；
 	   is-jump-flash 类由 jumpFlashId state 驱动） */
 	.comment.is-jump-flash {
-		border-radius: var(--radius-md);
+		border-radius: var(--radius-md, 0.5rem);
 		animation: comment-jump-flash 1.6s ease-out;
 	}
 	@keyframes comment-jump-flash {
@@ -1422,50 +1356,50 @@
 	.comment-env {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-3);
-		margin-top: var(--space-1);
-		font-size: var(--text-xs);
+		gap: var(--space-3, 0.75rem);
+		margin-top: var(--space-1, 0.25rem);
+		font-size: var(--text-xs, 0.75rem);
 		color: var(--color-text-muted);
 	}
 
 	.reply-form {
 		display: grid;
-		gap: var(--space-2);
-		margin-top: var(--space-3);
+		gap: var(--space-2, 0.5rem);
+		margin-top: var(--space-3, 0.75rem);
 	}
 	.reply-form-hint {
-		font-size: var(--text-xs);
+		font-size: var(--text-xs, 0.75rem);
 		color: var(--color-text-secondary);
 	}
 	.reply-form-actions {
 		position: relative;
 		display: flex;
-		gap: var(--space-2);
+		gap: var(--space-2, 0.5rem);
 	}
 	.btn-sm {
-		padding: var(--space-1) var(--space-3);
-		font-size: var(--text-xs);
+		padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
+		font-size: var(--text-xs, 0.75rem);
 	}
 
-	.comments-more {
+	.sc-comments-more {
 		display: flex;
 		justify-content: center;
-		margin-top: var(--space-4);
+		margin-top: var(--space-4, 1rem);
 	}
 
 	/* —— 发表区（列表上方）—— */
 	.composer {
 		display: grid;
-		gap: var(--space-3);
-		padding: var(--space-4);
+		gap: var(--space-3, 0.75rem);
+		padding: var(--space-4, 1rem);
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
+		border-radius: var(--radius, 0.5rem);
 	}
 	.composer-meta {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-3);
+		gap: var(--space-3, 0.75rem);
 		align-items: center;
 		justify-content: space-between;
 	}
@@ -1479,9 +1413,9 @@
 	.official-check {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-1);
+		gap: var(--space-1, 0.25rem);
 		margin-left: auto;
-		font-size: var(--text-xs);
+		font-size: var(--text-xs, 0.75rem);
 		color: var(--color-text-secondary);
 		cursor: pointer;
 		user-select: none;
@@ -1500,16 +1434,16 @@
 
 	.field {
 		width: 100%;
-		padding: var(--space-2) var(--space-3);
+		padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
 		font-family: inherit;
-		font-size: var(--text-sm);
+		font-size: var(--text-sm, 0.875rem);
 		color: var(--color-text);
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-sm, 0.375rem);
 		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
+			border-color var(--transition-fast, 0.18s ease),
+			box-shadow var(--transition-fast, 0.18s ease);
 		resize: vertical;
 	}
 	.field:focus {
@@ -1530,26 +1464,26 @@
 		overflow: hidden;
 	}
 
-	.comments-note {
-		font-size: var(--text-sm);
+	.sc-comments-note {
+		font-size: var(--text-sm, 0.875rem);
 		color: var(--color-text-secondary);
 	}
-	.comments-note.is-danger {
+	.sc-comments-note.is-danger {
 		color: var(--c-danger);
 	}
-	.comments-note.is-success {
+	.sc-comments-note.is-success {
 		color: var(--c-success);
 	}
 
-	.comments-empty {
-		margin-top: var(--space-4);
-		padding: var(--space-6);
-		font-size: var(--text-sm);
+	.sc-comments-empty {
+		margin-top: var(--space-4, 1rem);
+		padding: var(--space-6, 1.5rem);
+		font-size: var(--text-sm, 0.875rem);
 		color: var(--color-text-secondary);
 		text-align: center;
 		background: var(--color-surface);
 		border: 1px dashed var(--color-border);
-		border-radius: var(--radius);
+		border-radius: var(--radius, 0.5rem);
 	}
 
 	.sr-only {
@@ -1565,22 +1499,22 @@
 	}
 
 	/* ─── 排序切换（C2-4）：与上方发表表单拉开间距 ─── */
-	.comments-sort {
+	.sc-comments-sort {
 		display: flex;
-		gap: var(--space-2);
-		margin-top: var(--space-6);
-		margin-bottom: var(--space-3);
+		gap: var(--space-2, 0.5rem);
+		margin-top: var(--space-6, 1.5rem);
+		margin-bottom: var(--space-3, 0.75rem);
 	}
-	.comments-sort button {
-		padding: var(--space-1) var(--space-3);
-		font-size: var(--text-xs);
+	.sc-comments-sort button {
+		padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
+		font-size: var(--text-xs, 0.75rem);
 		color: var(--color-text-secondary);
 		border: 1px solid var(--color-border-light);
 		border-radius: 9999px;
 		background: transparent;
 		cursor: pointer;
 	}
-	.comments-sort button.is-active {
+	.sc-comments-sort button.is-active {
 		color: #fff;
 		background: var(--color-primary);
 		border-color: var(--color-primary);
@@ -1588,91 +1522,30 @@
 
 	/* ─── emoji（C2-5） ─── */
 	.btn-emoji {
-		padding: 0 var(--space-2);
-		font-size: var(--text-lg);
+		padding: 0 var(--space-2, 0.5rem);
+		font-size: var(--text-lg, 1.125rem);
 		line-height: 1;
 		background: transparent;
 		border: none;
 		cursor: pointer;
 	}
-	/* 浮层：锚在 emoji 按钮上方，展开不占文档流、不顶起表单 */
-	.emoji-picker {
-		position: absolute;
-		bottom: calc(100% + 6px);
-		left: 0;
-		z-index: 20;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 2px;
-		width: 264px;
-		padding: var(--space-2);
-		border: 1px solid var(--color-border-light);
-		border-radius: var(--radius-md);
-		background: var(--color-surface);
-		box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
-	}
-	/* 空间不足时（按钮距表单右缘 < 面板宽）贴右缘向左展开 */
-	.emoji-picker.is-flip {
-		left: auto;
-		right: 0;
-	}
-	.emoji-picker button {
-		width: 32px;
-		height: 32px;
-		font-size: var(--text-lg);
-		line-height: 1;
-		background: transparent;
-		border: none;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-	}
-	.emoji-picker button:hover {
-		background: var(--color-bg-tertiary);
-	}
-
-	/* ─── CAPTCHA（C1-3） ─── */
-	.captcha-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		margin-top: var(--space-2);
-	}
-	.captcha-svg {
-		flex: none;
-		display: flex;
-		align-items: center;
-		overflow: hidden;
-		border: 1px solid var(--color-border-light);
-		border-radius: var(--radius-md);
-		background: #f3f4f6;
-	}
-	.captcha-svg.captcha-loading {
-		width: 132px;
-		height: 56px;
-		justify-content: center;
-		color: var(--color-text-secondary);
-	}
-
 	/* ─── 行内编辑（C2-3） ─── */
 	.edit-form {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-2);
-		margin-top: var(--space-1);
+		gap: var(--space-2, 0.5rem);
+		margin-top: var(--space-1, 0.25rem);
 	}
 
 	/* ─── 窄容器自适应（左右布局站点的侧栏 / 移动端）────────────
 	   容器查询按评论区实际宽度降级：头像收小、回复缩进减半、
 	   emoji 面板收窄——站长无需任何配置，插件随主题容器自适应。
-	   变量覆写落在容器内的 .comments-list（容器不能自询自己）。 */
+	   变量覆写落在容器内的 .sc-comments-list（容器不能自询自己）。 */
 	@container comments (max-width: 480px) {
-		.comments-list {
+		.sc-comments-list {
 			--comments-avatar-size: 28px;
 			--comments-avatar-size-sm: 22px;
-			--comments-thread-gap: var(--space-2);
-		}
-		.emoji-picker {
-			width: min(264px, 90cqw);
+			--comments-thread-gap: var(--space-2, 0.5rem);
 		}
 		.comment-time {
 			margin-left: 0;
