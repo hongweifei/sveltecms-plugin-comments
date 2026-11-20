@@ -40,6 +40,17 @@ export interface ApiDeps {
 	sendReplyMail: (toEmail: string, replyContent: string, path: string | null) => void;
 	/** 站方成员判定（官方标门禁）：userRole(user) → roles.appAccess；非登录/无角色 → false */
 	isStaff: (user: unknown) => Promise<boolean>;
+	/** 超管判定（跨内容审核门禁）：userRole(user) → roles.adminAccess */
+	isSuperAdmin: (user: unknown) => Promise<boolean>;
+	/**
+	 * 解析评论所属内容的作者标识：contentId 绑定经内容引擎反查，path 绑定
+	 * 经 pages 桥取页面记录 userId。查不到返回 null（创作者无管理权）。
+	 */
+	contentOwnerId: (binding: {
+		path: string | null;
+		contentId: string | null;
+		contentType: string | null;
+	}) => Promise<string | null>;
 }
 
 export function createApiDeps(
@@ -137,19 +148,66 @@ export function createApiDeps(
 	 */
 	const staffCache = new Map<string, { at: number; ok: boolean }>();
 	async function isStaff(user: unknown): Promise<boolean> {
+		return roleFlag(user, 'appAccess');
+	}
+
+	/** 超管判定：角色行的 adminAccess 为真（跨内容审核的门禁） */
+	async function isSuperAdmin(user: unknown): Promise<boolean> {
+		return roleFlag(user, 'adminAccess');
+	}
+
+	/**
+	 * 角色标志位读取：按角色名查 roles 表并缓存 60 秒。
+	 * 非登录、无角色、查询失败一律返回 false（fail-closed）。
+	 */
+	async function roleFlag(user: unknown, flag: 'appAccess' | 'adminAccess'): Promise<boolean> {
 		const role = userRole(user);
 		if (!role) return false;
-		const hit = staffCache.get(role);
+		const key = `${role}:${flag}`;
+		const hit = staffCache.get(key);
 		if (hit && Date.now() - hit.at < 60_000) return hit.ok;
 		let ok = false;
 		try {
 			const res = await ctx.db.find('roles', { filter: { name: role }, limit: 1 });
-			ok = res.data.some((r) => (r as { appAccess?: unknown }).appAccess === true);
+			ok = res.data.some((r) => (r as Record<string, unknown>)[flag] === true);
 		} catch (e) {
-			ctx.logger.warn(`comments: staff check failed for role ${role}: ${String(e)}`);
+			ctx.logger.warn(`comments: role check failed for ${role}: ${String(e)}`);
 		}
-		staffCache.set(role, { at: Date.now(), ok });
+		staffCache.set(key, { at: Date.now(), ok });
 		return ok;
+	}
+
+	/**
+	 * 评论所属内容的作者：contentId 绑定按类型反查内容记录，path 绑定经
+	 * pages 桥取页面记录。查不到返回 null，创作者据此无管理权。
+	 */
+	async function contentOwnerId(binding: {
+		path: string | null;
+		contentId: string | null;
+		contentType: string | null;
+	}): Promise<string | null> {
+		if (binding.contentId && binding.contentType) {
+			try {
+				const record = (await ctx.content?.findById(binding.contentType, binding.contentId)) as
+					| Record<string, unknown>
+					| null
+					| undefined;
+				const raw = record?.userId;
+				if (typeof raw === 'string' && raw) return raw;
+			} catch {
+				/* 读取失败按无归属处理 */
+			}
+			return null;
+		}
+		if (binding.path) {
+			const recordId = await services.pagePaths.pathToRecordId(binding.path);
+			if (!recordId) return null;
+			const row = (await ctx.db.findById('pages', recordId)) as Record<string, unknown> | null;
+			const raw = row?.userId;
+			if (typeof raw === 'string' && raw) return raw;
+			return null;
+		}
+		return null;
 	}
 
 	return {
@@ -166,6 +224,8 @@ export function createApiDeps(
 		bustCount,
 		lastCommentAt,
 		sendReplyMail,
-		isStaff
+		isStaff,
+		isSuperAdmin,
+		contentOwnerId
 	};
 }

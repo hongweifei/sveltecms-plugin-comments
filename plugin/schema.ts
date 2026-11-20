@@ -33,6 +33,10 @@ export const comments = sqliteTable(
 		// 归属类型（非客户端原值）；历史行空值 = 匹配任意类型（读兼容）。
 		contentType: text('content_type'),
 		contentId: text('content_id'),
+		// 评论所属内容的作者（内容记录 userId 的快照）：后台按「内容归属」授权——
+		// 创作者只能看到并审核自己内容下的评论。内容转作者时由写入路径刷新，
+		// 历史行经一次性回填写入。
+		contentOwnerId: text('content_owner_id'),
 		parentId: text('parent_id'),
 		rootId: text('root_id'),
 		official: integer('official', { mode: 'boolean' }).default(false).notNull(),
@@ -54,6 +58,7 @@ export const comments = sqliteTable(
 	(table) => [
 		index('plugin_comments_path_idx').on(table.path),
 		index('plugin_comments_content_idx').on(table.contentId),
+		index('plugin_comments_owner_idx').on(table.contentOwnerId),
 		index('plugin_comments_parent_idx').on(table.parentId),
 		index('plugin_comments_root_idx').on(table.rootId),
 		// C3-3：featuredOnly 内容的公开列表按 featured 过滤（公众号式精选）

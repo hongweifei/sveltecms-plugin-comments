@@ -11,7 +11,21 @@ import { normalizeId, validateSubmitInput } from './validate';
 import type { ApiDeps } from './deps';
 
 export function registerAdminApi(d: ApiDeps): void {
-	const { blacklistService, cfg, contentSettings, ctx, info, pagePaths } = d;
+	const { blacklistService, cfg, contentSettings, ctx, info, pagePaths, contentOwnerId, isSuperAdmin } = d;
+
+	/**
+	 * 内容归属校验：超管放行；其余登录用户只能管理自己内容下的评论。
+	 * 归属取自评论绑定的内容记录（contentId 反查或 pages 桥），查不到即拒绝。
+	 */
+	async function canManageContent(
+		user: unknown,
+		binding: { path: string | null; contentId: string | null; contentType: string | null }
+	): Promise<boolean> {
+		if (await isSuperAdmin(user)) return true;
+		const ownerId = await contentOwnerId(binding);
+		const actorId = (user as { id?: string } | null | undefined)?.id;
+		return Boolean(ownerId && actorId && ownerId === actorId);
+	}
 
 	// 管理员回复：免审直接发布，official 标记供前台徽章；昵称默认取管理员名。
 	ctx.api.register({
@@ -30,6 +44,10 @@ export function registerAdminApi(d: ApiDeps): void {
 				);
 			}
 			const { content, path, contentId, contentType, parentId } = result.data;
+			// 归属校验：创作者仅能回复自己内容下的评论
+			if (!(await canManageContent(event.locals.user, { path, contentId, contentType }))) {
+				return json({ error: 'Forbidden' }, 403);
+			}
 			let rootId: string | null = null;
 			if (parentId) {
 				const parent = await ctx.db.findById('comments', parentId);
@@ -65,6 +83,8 @@ export function registerAdminApi(d: ApiDeps): void {
 				// 类型判别：管理端回复由界面携带所回复记录的集合 slug（管理员
 				// 可信来源，无客户端伪造面）；缺失 = 任意类型（历史兼容口径）
 				contentType: contentId ? (contentType ?? null) : null,
+				// 内容归属快照：后台据此把评论审核权授予内容作者（创作者）
+				contentOwnerId: await contentOwnerId({ path, contentId, contentType }),
 				parentId,
 				rootId,
 				official: true,
@@ -105,6 +125,9 @@ export function registerAdminApi(d: ApiDeps): void {
 			const contentId = normalizeId(event.url.searchParams.get('contentId') ?? '');
 			if (!contentId) return json({ error: 'contentId required' }, 400);
 			const contentType = normalizeId(event.url.searchParams.get('contentType') ?? '');
+			if (!(await canManageContent(event.locals.user, { path: null, contentId, contentType: contentType || null }))) {
+				return json({ error: 'Forbidden' }, 403);
+			}
 			return json({
 				contentId,
 				...(await contentSettings.get(contentId, contentType || null))
@@ -126,6 +149,9 @@ export function registerAdminApi(d: ApiDeps): void {
 			const contentType = normalizeId(
 				typeof parsed.body.contentType === 'string' ? parsed.body.contentType : ''
 			);
+			if (!(await canManageContent(event.locals.user, { path: null, contentId, contentType: contentType || null }))) {
+				return json({ error: 'Forbidden' }, 403);
+			}
 			const patch: Record<string, boolean> = {};
 			for (const key of ['closed', 'requireLogin', 'featuredOnly'] as const) {
 				if (typeof parsed.body[key] === 'boolean') patch[key] = parsed.body[key];
@@ -151,6 +177,12 @@ export function registerAdminApi(d: ApiDeps): void {
 			if (!id) return json({ error: 'Invalid id' }, 400);
 			const comment = await ctx.db.findById('comments', id);
 			if (!comment) return json({ error: 'Not found' }, 404);
+			// 归属校验：创作者仅能精选自己内容下的评论
+			const actor = event.locals.user;
+			const ownerId = String((comment as Record<string, unknown>).contentOwnerId ?? '');
+			if (!(await isSuperAdmin(actor)) && (!ownerId || ownerId !== String(actor?.id ?? ''))) {
+				return json({ error: 'Forbidden' }, 403);
+			}
 			const featured =
 				typeof parsed.body.featured === 'boolean'
 					? parsed.body.featured
@@ -166,7 +198,11 @@ export function registerAdminApi(d: ApiDeps): void {
 	ctx.api.register({
 		method: 'GET',
 		path: '/admin/settings',
-		handler: async () => json({ keywords: await blacklistService.get() })
+		handler: async (event: RequestEvent) => {
+			// 黑名单属于站点级配置，仅超管可读
+			if (!(await isSuperAdmin(event.locals.user))) return json({ error: 'Forbidden' }, 403);
+			return json({ keywords: await blacklistService.get() });
+		}
 	});
 
 
@@ -174,6 +210,8 @@ export function registerAdminApi(d: ApiDeps): void {
 		method: 'POST',
 		path: '/admin/settings',
 		handler: async (event: RequestEvent) => {
+			// 黑名单属于站点级配置，仅超管可写
+			if (!(await isSuperAdmin(event.locals.user))) return json({ error: 'Forbidden' }, 403);
 			const parsed = await readJson(event);
 			if (!parsed.ok) return json({ error: 'Invalid JSON' }, 400);
 			await blacklistService.set(

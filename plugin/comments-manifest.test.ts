@@ -41,6 +41,7 @@ describe('comments plugin register wiring', () => {
 			'path',
 			'contentType',
 			'contentId',
+			'contentOwnerId',
 			'status',
 			'official',
 			'reportReasons'

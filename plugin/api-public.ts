@@ -210,6 +210,8 @@ export function registerPublicApi(d: ApiDeps): void {
 					// 类型判别：存服务端经内容引擎反查过的归属类型（客户端声明不作数；
 					// resolve 未过 / path 绑定 → null，读取按「任意类型」兼容命中）
 					contentType: contentId ? resolvedType : null,
+					// 内容归属快照：后台据此把评论审核权授予内容作者（创作者）
+					contentOwnerId: contentAuthorId,
 					parentId,
 					rootId,
 					official,

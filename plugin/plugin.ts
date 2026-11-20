@@ -261,6 +261,17 @@ const plugin: Plugin = {
 					labelI18n: { en: 'Content ID' }
 				},
 				{
+					// 内容归属：评论所属内容的作者标识。由服务端在提交与回复时写入，
+					// 后台按它授予创作者审核权限（RBAC 条件 contentOwnerId = user.id）。
+					// 表单不展示（条件恒不成立），仅作为授权与过滤依据。
+					name: 'contentOwnerId',
+					type: 'text',
+					label: '内容归属',
+					labelI18n: { en: 'Content owner' },
+					hint: '评论所属内容的作者标识，由插件写入',
+					condition: { field: 'id', value: '__never__' }
+				},
+				{
 					name: 'status',
 					type: 'select',
 					required: true,

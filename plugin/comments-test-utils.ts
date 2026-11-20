@@ -177,7 +177,9 @@ export async function setup(
 	// 站点级白名单默认放行测试绑定（路径 /a + 类型 posts）；显式传参可覆盖
 	// （测试「留空 = 全关」时传 { enabledPaths: [], enabledTypes: [] }）
 	const merged = { enabledPaths: ['/a'], enabledTypes: ['posts'], ...config };
-	const built = buildContext(seed, merged, content);
+	// 角色表种子：管理端端点的归属校验按角色标志位判定，测试默认超管角色
+	const seeded = [...seed, { _collection: 'roles', name: 'admin', appAccess: true, adminAccess: true }];
+	const built = buildContext(seeded, merged, content);
 	await plugin.register(built.ctx);
 	return built;
 }
@@ -201,11 +203,15 @@ export function mockEvent(opts: {
 		headers: { 'user-agent': opts.ua ?? UA },
 		body: opts.method === 'GET' ? undefined : JSON.stringify(opts.body ?? {})
 	});
+	// 管理端端点按角色校验归属：测试默认以超管身份调用（opts.user 显式给出角色时以其为准）
+	const isAdminPath = opts.url.includes('/admin/');
+	const actor = opts.user ?? (isAdminPath ? { id: 'admin-1', name: '站长' } : null);
+	const user = actor && isAdminPath ? { role: 'admin', ...actor } : actor;
 	return {
 		request,
 		url: new URL(opts.url),
 		getClientAddress: () => '127.0.0.1',
-		locals: { user: opts.user ?? undefined }
+		locals: { user: user ?? undefined }
 	} as unknown as RequestEvent;
 }
 
