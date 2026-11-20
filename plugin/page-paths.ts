@@ -14,7 +14,7 @@
  * - recordPath(id)：id→path（/admin/eligible 判定编辑表单是否显示设置）。
  *   沿 parentId 链 findById 上溯，仅两表未命中时调用，成本有界。
  */
-import type { PluginContext } from '$lib/cms/types/plugin';
+import type { PluginContext } from '#lib/cms/types/plugin.ts';
 
 interface PageNode {
 	slug: string;

@@ -7,7 +7,7 @@
  *
  * 不读插件表，只读 ctx.config.get；注册时构造，闭包持有 ctx 即可。
  */
-import type { PluginContext } from '$lib/cms/types/plugin';
+import type { PluginContext } from '#lib/cms/types/plugin.ts';
 
 /** 任意 ctx 的最小配置接口（解耦具体 PluginContext 类型，方便单测） */
 export interface ConfigSource {

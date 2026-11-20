@@ -9,7 +9,7 @@
  * 命中判定由端点侧直接调用 validate.matchBlacklist，不在服务内（match 是无状态
  * 字符串操作，不属于本服务的存储责任面）。
  */
-import type { PluginContext } from '$lib/cms/types/plugin';
+import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { parseBlacklist } from './validate';
 
 const KEY = 'blacklist';

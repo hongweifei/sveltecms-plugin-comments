@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BASE, UA, EMAIL, setup, getEndpoint, mockEvent, submitBody, commentRow } from './comments-test-utils';
 import { gravatarHash } from './client-info';
 import { UAParser } from 'ua-parser-js';
-import { runWithRequestContext } from '$lib/common/server/request-context';
+import { runWithRequestContext } from '#lib/common/server/request-context.ts';
 
 describe('POST /submit', () => {
 	// 方案 A 写侧：contentId 绑定落库带「服务端反查校验过的」类型判别——

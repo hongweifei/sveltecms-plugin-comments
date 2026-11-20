@@ -4,7 +4,7 @@
  * 与 plugin.ts 内联旧实现等价——只是把入口集中到此处供端点共享。
  */
 import type { RequestEvent } from '@sveltejs/kit';
-import { emailAvatarUrl } from '$lib/cms/utils/user-avatar';
+import { emailAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import type { CommentBinding } from './validate';
 import { resolveBinding } from './validate';
 import type { PublicComment } from './shared';

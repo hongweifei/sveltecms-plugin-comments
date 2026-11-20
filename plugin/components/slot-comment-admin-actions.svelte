@@ -10,10 +10,10 @@
 	i18n 同其他组件：i18n.ts 注册、loadPluginMessages 取词（admin_ 前缀）。
 -->
 <script lang="ts">
-	import Dialog from '$lib/common/components/ui/Dialog.svelte';
-	import { showToast } from '$lib/common/utils/toast';
-	import { getCsrfToken } from '$lib/common/utils/csrf';
-	import { loadPluginMessages } from '$lib/cms/utils/i18n-client';
+	import Dialog from '#lib/common/components/ui/Dialog.svelte';
+	import { showToast } from '#lib/common/utils/toast.ts';
+	import { getCsrfToken } from '#lib/common/utils/csrf.ts';
+	import { loadPluginMessages } from '#lib/cms/utils/i18n-client.ts';
 	import { Send, Reply } from '@lucide/svelte';
 
 	let {

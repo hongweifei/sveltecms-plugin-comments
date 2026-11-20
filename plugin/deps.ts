@@ -9,9 +9,9 @@
  * 限流器在工厂内创建（与原闭包语义一致）：每次 register() 得到全新 store，
  * 测试相互隔离、热重载不残留计数。
  */
-import type { PluginContext } from '$lib/cms/types/plugin';
-import { createRateLimiter } from '$lib/common/server/rate-limit';
-import { userRole } from '$lib/cms/utils/user-role';
+import type { PluginContext } from '#lib/cms/types/plugin.ts';
+import { createRateLimiter } from '#lib/common/server/rate-limit.ts';
+import { userRole } from '#lib/cms/utils/user-role.ts';
 import type { ConfigService } from './config';
 import type { ContentSettingsService } from './content-settings';
 import type { BlacklistService } from './blacklist';

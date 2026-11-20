@@ -5,9 +5,9 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
-import { computeVisitorId } from '$lib/cms/stats';
-import { getRequestIp } from '$lib/common/server/rate-limit';
-import { userAvatarUrl } from '$lib/cms/utils/user-avatar';
+import { computeVisitorId } from '#lib/cms/stats.ts';
+import { getRequestIp } from '#lib/common/server/rate-limit.ts';
+import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import { bindingFilter, bindingMatches, bindingOf, json, readJson, toPublic, type CommentRow, type ResolvedUser } from './helpers';
 import { clampPaging, isHoneypotFilled, matchBlacklist, normalizeId, validateSubmitInput } from './validate';
 import type { ApiDeps } from './deps';

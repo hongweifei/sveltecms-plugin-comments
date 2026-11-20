@@ -18,8 +18,8 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getCsrfToken } from '$lib/common/utils/csrf';
-	import { loadPluginMessages } from '$lib/cms/utils/i18n-client';
+	import { getCsrfToken } from '#lib/common/utils/csrf.ts';
+	import { loadPluginMessages } from '#lib/cms/utils/i18n-client.ts';
 	import {
 		MAX_AUTHOR_NAME_LENGTH,
 		MAX_EMAIL_LENGTH,

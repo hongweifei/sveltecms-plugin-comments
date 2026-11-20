@@ -18,10 +18,13 @@ scripts/
   sync-watch.mjs   plugin/ 热同步进宿主运行副本（pnpm dev 的 watch 侧）
   package.mjs      打发布 zip + 打印 SHA-256
   reset-e2e-db.mjs 擦净 e2e 数据库
-vitest.config.ts   测试配置（$lib 解析到 .sveltecms/src/lib）
+vitest.config.ts   测试配置（#lib 解析到 .sveltecms/src/lib）
 playwright.config.ts  e2e 配置（就地起宿主 dev server，独立 DB）
 .sveltecms/        宿主框架 checkout（自动创建，gitignore，勿手改）
 ```
+
+> 宿主即 SvelteKit 3：类型从 `.sveltecms/node_modules/$app` 借用（ensure 会把它链接到本仓
+> `node_modules/$app`，`tsconfig.json` 的 `extends`/`types` 由此解析）。
 
 ## 开发
 
@@ -61,7 +64,7 @@ pnpm package      # 打发布 zip + SHA-256
 
 ```bash
 node scripts/package.mjs           # dist/comments-<version>.zip + SHA-256
-git tag v0.1.0 && git push --tags  # Release 工作流自动挂 zip
+git tag v0.2.0 && git push --tags  # Release 工作流自动挂 zip
 ```
 
 上架社区市场：向 [sveltecms-marketplace](https://github.com/hongweifei/sveltecms-marketplace)

@@ -4,7 +4,7 @@
  * 设备环境与归属地一律复用框架设施：
  * - UA 解析用仓库依赖 ua-parser-js（先 matchesGim 浏览器主版本号）
  * - 系统名走框架 parseOS（Client Hints 优先判 Win11，与 audit 同源）
- * - IP 归属地用 $lib/common/server/ip-region 的 lookupRegion（ip2region
+ * - IP 归属地用 #lib/common/server/ip-region 的 lookupRegion（ip2region
  *   离线库 + 内置缓存，best-effort，失败留空）
  * - 登录用户的头像 / 昵称走 user 表实时反查（依赖 manifest 声明的
  *   'user' 系统表只读权限）
@@ -16,10 +16,10 @@ import { createHash } from 'node:crypto';
 import { UAParser } from 'ua-parser-js';
 
 import type { RequestEvent } from '@sveltejs/kit';
-import type { PluginContext } from '$lib/cms/types/plugin';
-import { getChPlatform, getChPlatformVersion, parseOS } from '$lib/common/server/request-context';
-import { lookupRegion } from '$lib/common/server/ip-region';
-import { userAvatarUrl } from '$lib/cms/utils/user-avatar';
+import type { PluginContext } from '#lib/cms/types/plugin.ts';
+import { getChPlatform, getChPlatformVersion, parseOS } from '#lib/common/server/request-context.ts';
+import { lookupRegion } from '#lib/common/server/ip-region.ts';
+import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import type { CommentRow, ResolvedUser } from './helpers';
 
 /** gravatar / cravatar 头像哈希（邮箱小写去空白后 md5）；无邮箱返回 null */

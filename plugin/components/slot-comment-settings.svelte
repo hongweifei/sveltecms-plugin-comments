@@ -22,9 +22,9 @@
 	前台组件模式）。
 -->
 <script lang="ts">
-	import { showToast } from '$lib/common/utils/toast';
-	import { getCsrfToken } from '$lib/common/utils/csrf';
-	import { loadPluginMessages } from '$lib/cms/utils/i18n-client';
+	import { showToast } from '#lib/common/utils/toast.ts';
+	import { getCsrfToken } from '#lib/common/utils/csrf.ts';
+	import { loadPluginMessages } from '#lib/cms/utils/i18n-client.ts';
 
 	let {
 		mode = undefined,

@@ -4,8 +4,8 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
-import { getRequestIp } from '$lib/common/server/rate-limit';
-import { userAvatarUrl } from '$lib/cms/utils/user-avatar';
+import { getRequestIp } from '#lib/common/server/rate-limit.ts';
+import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import { bindingMatches, json, readJson, toPublic, type CommentRow, type ResolvedUser } from './helpers';
 import { normalizeId, validateSubmitInput } from './validate';
 import type { ApiDeps } from './deps';

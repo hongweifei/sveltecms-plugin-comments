@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
-import { baseColumns } from '$lib/cms/db/schema-helpers';
+import { baseColumns } from '#lib/cms/db/schema-helpers.ts';
 
 /**
  * 评论主表。绑定双键：path（页面路径）与 contentId（内容项 ID）至少其一；

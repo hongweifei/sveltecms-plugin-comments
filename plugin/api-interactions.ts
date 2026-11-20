@@ -4,8 +4,8 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
-import { computeVisitorId } from '$lib/cms/stats';
-import { getRequestIp } from '$lib/common/server/rate-limit';
+import { computeVisitorId } from '#lib/cms/stats.ts';
+import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { json, readJson, type CommentRow } from './helpers';
 import { MAX_CONTENT_LENGTH, REPORT_AUTO_PENDING_THRESHOLD, appendReportReason, isHoneypotFilled, normalizeId } from './validate';
 import type { ApiDeps } from './deps';

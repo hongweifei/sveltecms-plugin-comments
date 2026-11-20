@@ -15,7 +15,7 @@
  * set 是 patch 语义：patch 中省略的字段保持当前值；这与管理员 UI 的
  * POST /admin/content-settings 行为一致（仅显式给出的字段生效）。
  */
-import type { PluginContext } from '$lib/cms/types/plugin';
+import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { normalizeId } from './validate';
 
 /** 内容级设置三字段（创作者控制） */

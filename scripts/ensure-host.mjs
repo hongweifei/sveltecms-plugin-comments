@@ -6,7 +6,9 @@
  *   1. git clone --depth 1 框架仓库到 .sveltecms/
  *   2. 宿主 pnpm install
  *   3. 把 plugin/ 同步进 .sveltecms/data/plugins/comments/（编译期 glob 收录）
- *   4. svelte-kit sync（生成 .svelte-kit/tsconfig.json 类型层，供 check 用）
+ *   4. svelte-kit sync（生成 node_modules/$app 类型层与 .svelte-kit/types，供 check 用）
+ *   5. 把宿主 node_modules/$app 链接进本仓 node_modules，tsconfig 的
+ *      `extends`/`types` 才能解析到 $app/tsconfig 与 $app/types
  *
  * 用法：
  *   node scripts/ensure-host.mjs            # 装配/刷新（REF 变化时自动 pull）
@@ -32,20 +34,20 @@ const CHECK = args.includes('--check');
 const SYNC_ONLY = args.includes('--sync');
 
 /**
- * Node 版本闸门（engines 要求 >=24）。
+ * Node 版本闸门（宿主 engines 要求 >=22.17.0，SvelteKit 3 / Vite 8 的下限）。
  *
  * pnpm 的 "Unsupported engine" 只是 WARN——命令照跑，于是低版本 node 的
- * 报错散落在后续各处（vite 8 要求 node 20.19+ / 22.12+，libsql 的
- * node:sqlite 也要求 22.5+ 且 24+ 才有完整 API），排查成本高。
+ * 报错散落在后续各处（vite 8 要求 node 20.19+ 且 SvelteKit 3 要求 22.17+，
+ * libsql 的 node:sqlite 也要求 22.5+），排查成本高。
  *
  * 这里提前拦下并给出可直接粘贴的命令：nvm-windows 装在 C:/nvm4w 时，
  * PATH 里的 node 常常是旧的（系统 PATH 优先于 nvm 目录），显式提示换用
  * 新版所在目录即可。
  */
-const NODE_MAJOR = Number(process.versions.node.split('.')[0]);
-if (NODE_MAJOR < 24) {
+const [NODE_MAJOR, NODE_MINOR] = process.versions.node.split('.').map(Number);
+if (NODE_MAJOR < 22 || (NODE_MAJOR === 22 && NODE_MINOR < 17)) {
 	console.error(
-		`[host] 当前 node ${process.versions.node}，本项目要求 >=24（engines.node）。`
+		`[host] 当前 node ${process.versions.node}，本项目要求 >=22.17（宿主 engines.node）。`
 	);
 	console.error('[host] 换用新版 node 后重试。nvm-windows 装在 C:/nvm4w 时：');
 	console.error('    PATH="/c/nvm4w/nodejs:$PATH" pnpm test');
@@ -96,8 +98,25 @@ function syncPlugin() {
 	});
 }
 
-function ensure() {
-	if (!hostCloned()) {
+/**
+ * 把宿主的 node_modules/$app（SvelteKit 3 生成的类型包：$app/types、$app/tsconfig）
+ * 链接进本仓 node_modules。tsconfig 的 `extends` 与 `types` 都指向 $app/*，
+ * TypeScript 从本仓解析，缺这个链接 svelte-check 会报找不到类型包。
+ * 已存在则跳过：Windows 用 junction（免管理员），其余平台用符号链接。
+ */
+function linkAppTypes() {
+	const source = path.join(HOST, 'node_modules/$app');
+	const dest = path.join(ROOT, 'node_modules/$app');
+	if (!existsSync(source) || lstatSync(dest, { throwIfNoEntry: false })) return;
+	mkdirSync(path.dirname(dest), { recursive: true });
+	if (process.platform === 'win32') {
+		execFileSync('cmd.exe', ['/c', 'mklink', '/J', dest, source], { stdio: 'ignore' });
+	} else {
+		execFileSync('ln', ['-s', source, dest]);
+	}
+}
+
+function ensure() {	if (!hostCloned()) {
 		console.log(`[host] 首次装配：clone ${REPO} (${REF}) → .sveltecms/（几分钟）`);
 		sh('git', ['clone', '--depth', '1', '--branch', REF, REPO, HOST]);
 	} else if (process.env.SVELTECMS_HOST_PULL === '1') {
@@ -119,9 +138,12 @@ function ensure() {
 		console.error(`[host] 修复：pnpm --dir "${HOST}" install --force`);
 		process.exit(1);
 	}
-	if (!existsSync(path.join(HOST, '.svelte-kit/tsconfig.json'))) {
+	// SvelteKit 3 把类型层生成为 node_modules/$app（tsconfig 的 extends/types 来源）
+	// 与 .svelte-kit/types（路由 $types），两者由 svelte-kit sync 产出。
+	if (!existsSync(path.join(HOST, 'node_modules/$app/tsconfig.json'))) {
 		sh('pnpm', ['exec', 'svelte-kit', 'sync'], { cwd: HOST });
 	}
+	linkAppTypes();
 	// 脚手架契约：drizzle/ 迁移不入 git（README「首次运行」），由 db:generate
 	// 基于 schema 生成——fresh clone 缺它则 dev 启动 runMigrations 必炸。
 	// 这是秒级确定性代码生成（不连库），装配阶段直接补做（插件/集合表走
@@ -134,7 +156,7 @@ function ensure() {
 		});
 	}
 	// paraglide 文案层是生成物（宿主 .gitignore 排除，平时由 prepare 钩子编译）
-	// ——fresh clone 必须显式补一刀，否则 $lib/paraglide/messages 无处解析
+	// ——fresh clone 必须显式补一刀，否则 #lib/paraglide/messages 无处解析
 	if (!existsSync(path.join(HOST, 'src/lib/paraglide/messages'))) {
 		sh(
 			'pnpm',
@@ -149,7 +171,8 @@ if (CHECK) {
 	const ok =
 		hostCloned() &&
 		existsSync(path.join(HOST, 'node_modules')) &&
-		existsSync(path.join(HOST, '.svelte-kit/tsconfig.json')) &&
+		existsSync(path.join(HOST, 'node_modules/$app/tsconfig.json')) &&
+		existsSync(path.join(ROOT, 'node_modules/$app/tsconfig.json')) &&
 		existsSync(path.join(HOST, 'src/lib/paraglide/messages'));
 	if (!ok) {
 		console.error('[host] .sveltecms 未装配——先运行 pnpm dev / pnpm test（会自动装配），或手动 pnpm ensure');
