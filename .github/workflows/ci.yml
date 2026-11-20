@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24, 26]
-        pnpm: [11.24.0, 12.21.0]
+        pnpm: [12.21.0, 11.28.13]
     steps:
       - uses: pnpm/action-setup@v4
         with:
@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.28.13
+          version: 12.21.0
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
