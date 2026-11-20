@@ -1,0 +1,5 @@
+# pnpm 12 起把设置从 package.json 的 "pnpm" 字段迁到这里。
+# 供应链接策略：只安装发布满 24 小时的版本（与宿主 sveltecms-starter 同一口径）。
+# 本地若绕过该策略，会产出 CI 拒绝的 lockfile（2026-11-20：svelte 5.58.1 与
+# @lucide/svelte 1.77.0 发布不足 24h，CI 的 --frozen-lockfile 校验直接失败）。
+minimumReleaseAge: 1440
