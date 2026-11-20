@@ -12,11 +12,11 @@ jobs:
     steps:
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.24.0
+          version: 11.28.13 # 发版用确定版本；兼容性由 CI 矩阵保证
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prod=false
       - name: Build zip（根布局：plugin.ts 在 zip 根）

@@ -8,16 +8,23 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # 版本矩阵：项目不锁精确版本（devEngines.onFail=ignore），CI 就该验证
+    # 多版本组合都成立——锁一个版本跑绿，证明不了别的环境能用。
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24, 26]
+        pnpm: [11.24.0, 12.21.0]
     steps:
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.24.0
+          version: ${{ matrix.pnpm }}
 
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       # 宿主框架自动 clone 进 .sveltecms/ 并装配（scripts/ensure-host.mjs
@@ -39,11 +46,11 @@ jobs:
     steps:
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.24.0
+          version: 11.28.13
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium

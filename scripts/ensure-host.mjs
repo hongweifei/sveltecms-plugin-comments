@@ -15,7 +15,7 @@
  *
  * 覆盖：SVELTECMS_REPO（框架 git URL）、SVELTECMS_REF（分支/标签，默认 master）
  */
-import { existsSync, mkdirSync, cpSync, lstatSync } from 'node:fs';
+import { existsSync, mkdirSync, cpSync, lstatSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +30,28 @@ const REF = process.env.SVELTECMS_REF || 'master';
 const args = process.argv.slice(2);
 const CHECK = args.includes('--check');
 const SYNC_ONLY = args.includes('--sync');
+
+/**
+ * Node 版本闸门（engines 要求 >=24）。
+ *
+ * pnpm 的 "Unsupported engine" 只是 WARN——命令照跑，于是低版本 node 的
+ * 报错散落在后续各处（vite 8 要求 node 20.19+ / 22.12+，libsql 的
+ * node:sqlite 也要求 22.5+ 且 24+ 才有完整 API），排查成本高。
+ *
+ * 这里提前拦下并给出可直接粘贴的命令：nvm-windows 装在 C:/nvm4w 时，
+ * PATH 里的 node 常常是旧的（系统 PATH 优先于 nvm 目录），显式提示换用
+ * 新版所在目录即可。
+ */
+const NODE_MAJOR = Number(process.versions.node.split('.')[0]);
+if (NODE_MAJOR < 24) {
+	console.error(
+		`[host] 当前 node ${process.versions.node}，本项目要求 >=24（engines.node）。`
+	);
+	console.error('[host] 换用新版 node 后重试。nvm-windows 装在 C:/nvm4w 时：');
+	console.error('    PATH="/c/nvm4w/nodejs:$PATH" pnpm test');
+	console.error(`[host] 或用 nvm 切换到 .nvmrc 记录的版本（nvm use $(cat .nvmrc)）。`);
+	process.exit(1);
+}
 
 function sh(cmd, cmdArgs, opts = {}) {
 	// Node ≥22 禁止无 shell 直启 .cmd（pnpm 在 Windows 是 cmd shim，EINVAL）；
