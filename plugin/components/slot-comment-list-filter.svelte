@@ -6,7 +6,11 @@
 	`visitorProvider` 是服务端写入的文本列，不出下拉；但列表服务端对任意
 	`filter_<字段>` 都做等值过滤，因此这里只需把下拉选中的值写进 URL。
 
-	只在 comments 集合显示；其它集合列表不受影响。
+	边界：
+	- 只在 comments 集合显示；其它集合列表不受影响。
+	- 已知来源固定为 wechat；URL 里若带着未来新增/手改的来源值，仍渲染成
+	  当前选中项，切换筛选不会把它悄悄清掉。
+	- 只改 filter_visitorProvider 与 page，搜索、排序、其它筛选原样保留。
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
@@ -16,11 +20,18 @@
 
 	let { contentType = undefined }: { contentType?: string } = $props();
 
+	/** 已知来源；新增来源时同步补 option 与文案 */
+	const KNOWN_SOURCES = ['wechat'] as const;
+
 	// 文案与插件其它界面同源（/api/v1/i18n/comments 下发），不占用框架命名空间
 	let messages = $state<Record<string, string>>({});
 	const tr = $derived((key: string) => messages[key] ?? key);
 
 	const value = $derived(page.url.searchParams.get('filter_visitorProvider') ?? '');
+	/** URL 上的未知来源：保留为可选项，避免下拉显示空白且值被悄悄丢弃 */
+	const unknownSource = $derived(
+		value !== '' && !(KNOWN_SOURCES as readonly string[]).includes(value)
+	);
 
 	$effect(() => {
 		loadPluginMessages('comments').then((m) => (messages = m));
@@ -42,6 +53,9 @@
 		<select class="cl-filter-select" {value} onchange={change}>
 			<option value="">{tr('listFilter_allSources')}</option>
 			<option value="wechat">{tr('wechatBadge')}</option>
+			{#if unknownSource}
+				<option {value}>{value}</option>
+			{/if}
 		</select>
 	</label>
 {/if}
