@@ -31,10 +31,11 @@ export const messages: Record<string, Record<string, string>> = {
 	websiteLabel: { zh: '主页（可选）', en: 'Website (optional)' },
 	// 微信访客身份（框架 /oauth/wechat/*）：登录后隐藏身份三字段，昵称与头像
 	// 由签名 cookie 提供；徽章标在评论作者名后。
-	wechatLogin: { zh: '微信登录后评论', en: 'Comment with WeChat' },
-	wechatAs: { zh: '以 {name} 身份评论', en: 'Commenting as {name}' },
-	wechatLogout: { zh: '退出', en: 'Sign out' },
+	visitorLogin: { zh: '使用{provider}登录', en: 'Sign in with {provider}' },
+	visitorAs: { zh: '以 {name} 身份评论', en: 'Commenting as {name}' },
+	visitorLogout: { zh: '退出', en: 'Sign out' },
 	wechatBadge: { zh: '微信', en: 'WeChat' },
+	qqBadge: { zh: 'QQ', en: 'QQ' },
 	// 管理端评论列表的登录来源筛选（toolbar 插槽）
 	listFilter_source: { zh: '登录来源', en: 'Sign-in source' },
 	listFilter_allSources: { zh: '全部来源', en: 'All sources' },

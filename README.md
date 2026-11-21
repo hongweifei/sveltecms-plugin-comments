@@ -2,9 +2,9 @@
 
 SvelteCMS 官方评论插件——独立仓库开发，经[社区插件市场](https://github.com/hongweifei/sveltecms-marketplace)分发。
 
-功能：前台评论区（嵌套线程/点赞/举报/编辑删除/游客与登录双态/微信访客登录）、官方回复（免审 + 徽章 + 邮件通知）、后台审核列表与行内回复、内容级开关、IP 属地/设备环境、黑名单、精选。完整说明见 [docs/FEATURES.md](docs/FEATURES.md)（概念模型 / 状态机 / 配置项 / 端点 / 反滥用）。
+功能：前台评论区（嵌套线程/点赞/举报/编辑删除/游客与登录双态/微信与 QQ 访客登录）、官方回复（免审 + 徽章 + 邮件通知）、后台审核列表与行内回复、内容级开关、IP 属地/设备环境、黑名单、精选。完整说明见 [docs/FEATURES.md](docs/FEATURES.md)（概念模型 / 状态机 / 配置项 / 端点 / 反滥用）。
 
-> 微信访客登录依赖框架的 `/oauth/wechat/*` 与 `event.locals.visitor`（配套框架提供）；站点未配置公众号凭据时入口自动隐藏。
+> 访客登录依赖框架的 `/oauth/visitor/*` 与 `event.locals.visitor`（微信公众号、QQ）；站点未配置对应凭据时入口自动隐藏。
 
 ## 仓库结构
 

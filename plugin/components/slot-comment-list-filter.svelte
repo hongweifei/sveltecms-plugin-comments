@@ -21,7 +21,7 @@
 	let { contentType = undefined }: { contentType?: string } = $props();
 
 	/** 已知来源；新增来源时同步补 option 与文案 */
-	const KNOWN_SOURCES = ['wechat'] as const;
+	const KNOWN_SOURCES = ['wechat', 'qq'] as const;
 
 	// 文案与插件其它界面同源（/api/v1/i18n/comments 下发），不占用框架命名空间
 	let messages = $state<Record<string, string>>({});
@@ -53,6 +53,7 @@
 		<select class="cl-filter-select" {value} onchange={change}>
 			<option value="">{tr('listFilter_allSources')}</option>
 			<option value="wechat">{tr('wechatBadge')}</option>
+			<option value="qq">{tr('qqBadge')}</option>
 			{#if unknownSource}
 				<option {value}>{value}</option>
 			{/if}

@@ -1,6 +1,6 @@
 {
 	"name": "sveltecms-plugin-comments",
-	"version": "0.3.3",
+	"version": "0.3.4",
 	"type": "module",
 	"private": true,
 	"description": "SvelteCMS 官方评论插件（独立仓库，经插件市场分发）",
