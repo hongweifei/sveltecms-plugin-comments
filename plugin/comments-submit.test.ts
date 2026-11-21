@@ -214,6 +214,35 @@ describe('POST /submit', () => {
 		expect(body.comment.avatar).toBe('https://thirdwx.qlogo.cn/avatar');
 	});
 
+	it('关闭游客评论后：匿名拒绝，微信访客按已登录身份放行', async () => {
+		const built = await setup([], { allowGuest: false });
+		const submit = getEndpoint(built, 'POST', '/submit');
+
+		const guest = await submit.handler(
+			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({}) })
+		);
+		expect(guest.status).toBe(403);
+		expect(built.dbCreate).not.toHaveBeenCalled();
+
+		const visitor = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				visitor: {
+					provider: 'wechat',
+					subject: 'union-3',
+					openid: 'openid-3',
+					nickname: '微信访客'
+				},
+				body: { content: '登录后发言', path: '/a' }
+			})
+		);
+		expect(visitor.status).toBe(200);
+		const created = built.dbCreate.mock.calls[0][1] as Record<string, unknown>;
+		expect(created.authorName).toBe('微信访客');
+		expect(created.visitorProvider).toBe('wechat');
+	});
+
 	it('微信访客伪造昵称无效：服务端只认 locals.visitor', async () => {
 		const built = await setup();
 		const submit = getEndpoint(built, 'POST', '/submit');

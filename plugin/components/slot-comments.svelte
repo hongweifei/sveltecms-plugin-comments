@@ -94,6 +94,8 @@
 	let siteEnabled = $state(true);
 	/** B2b：站点开启「游客邮箱可留空」时输入框去掉必填（服务端同步放行） */
 	let guestEmailOptional = $state(false);
+	/** 站点允许匿名游客评论；关闭时未登录且无微信身份提示登录 */
+	let guestAllowed = $state(true);
 	/**
 	 * 正文上限（站点可配，/list 下发）：先前硬编码 2000（服务端硬上限），
 	 * 而站点默认配 500——用户能输 2000 字却在提交时被 400 拒绝，前台只给
@@ -299,6 +301,7 @@
 			loadFailed = false;
 			siteEnabled = body.enabled ?? true;
 			guestEmailOptional = body.guestEmailOptional ?? false;
+			guestAllowed = body.allowGuest ?? true;
 			maxContentLength = body.maxLength ?? MAX_CONTENT_LENGTH;
 			canOfficial = body.canOfficial ?? false;
 			// 登录态由 /list 服务端按会话下发（本地无 better-auth HTTP 端点可探测）
@@ -422,10 +425,7 @@
 	/** 访客身份持久化（twikoo 模式）：下次评论自动回填 */
 	function saveVisitor() {
 		try {
-			localStorage.setItem(
-				'comments:visitor',
-				JSON.stringify({ authorName, email, website })
-			);
+			localStorage.setItem('comments:visitor', JSON.stringify({ authorName, email, website }));
 		} catch {
 			/* 隐私模式等场景静默 */
 		}
@@ -840,136 +840,149 @@
 			<p class="sc-comments-note">{t.siteClosed}</p>
 		{:else if contentSettings?.closed}
 			<p class="sc-comments-note">{t.closed}</p>
+		{:else if !guestAllowed && !account && !wechatVisitor}
+			<p class="sc-comments-note">
+				{t.loginToComment}
+				{#if wechatEnabled}
+					<a
+						class="wechat-link"
+						href={`/oauth/wechat/start?returnTo=${encodeURIComponent(returnTo())}`}
+					>
+						{t.wechatLogin}
+					</a>
+				{/if}
+			</p>
 		{:else if contentSettings?.requireLogin && !account && !wechatVisitor}
 			<p class="sc-comments-note">{t.loginToComment}</p>
 		{:else}
-		<form class="composer" onsubmit={submit}>
-			<!-- 蜜罐：视觉隐藏但不在 display:none（防自动填充/爬虫识别），填了即机器人 -->
-			<div class="honeypot" aria-hidden="true">
-				<label for="comment-hp">Leave blank</label>
-				<input
-					id="comment-hp"
-					name="_hp"
-					type="text"
-					bind:value={honeypot}
-					tabindex="-1"
-					autocomplete="off"
-				/>
-			</div>
-
-			<label class="sr-only" for="comment-content">{t.title}</label>
-			<textarea
-				id="comment-content"
-				class="field"
-				bind:value={content}
-				bind:this={mainInputEl}
-				rows="3"
-				maxlength={maxContentLength}
-				required
-				placeholder={t.placeholder}
-			></textarea>
-
-			<!-- 微信访客身份：未登录显示入口，已登录显示昵称与退出；身份三字段随之隐藏 -->
-			{#if wechatEnabled && !account}
-				<div class="wechat-identity">
-					{#if wechatVisitor}
-						{#if wechatVisitor.avatar}
-							<img class="wechat-avatar" src={wechatVisitor.avatar} alt="" />
-						{/if}
-						<span class="wechat-name">
-							{t.wechatAs.replace('{name}', wechatVisitor.nickname)}
-						</span>
-						<a
-							class="wechat-link"
-							href={`/oauth/wechat/logout?returnTo=${encodeURIComponent(returnTo())}`}
-						>
-							{t.wechatLogout}
-						</a>
-					{:else}
-						<a
-							class="wechat-link"
-							href={`/oauth/wechat/start?returnTo=${encodeURIComponent(returnTo())}`}
-						>
-							{t.wechatLogin}
-						</a>
-					{/if}
-				</div>
-			{/if}
-
-			<div class="composer-meta">
-				{#if !account && !wechatVisitor}
+			<form class="composer" onsubmit={submit}>
+				<!-- 蜜罐：视觉隐藏但不在 display:none（防自动填充/爬虫识别），填了即机器人 -->
+				<div class="honeypot" aria-hidden="true">
+					<label for="comment-hp">Leave blank</label>
 					<input
-						id="comment-author"
-						class="field field-sm"
+						id="comment-hp"
+						name="_hp"
 						type="text"
-						bind:value={authorName}
-						maxlength={MAX_AUTHOR_NAME_LENGTH}
-						placeholder={t.nameOptional}
-						autocomplete="name"
+						bind:value={honeypot}
+						tabindex="-1"
+						autocomplete="off"
 					/>
-					<input
-						id="comment-email"
-						class="field field-sm"
-						type="email"
-						bind:value={email}
-						maxlength={MAX_EMAIL_LENGTH}
-						required={!guestEmailOptional}
-						placeholder={guestEmailOptional ? t.emailOptional : t.emailLabel}
-						autocomplete="email"
-					/>
-					<input
-						id="comment-website"
-						class="field field-sm"
-						type="url"
-						bind:value={website}
-						maxlength={MAX_WEBSITE_LENGTH}
-						placeholder={t.websiteLabel}
-						autocomplete="url"
-					/>
+				</div>
+
+				<label class="sr-only" for="comment-content">{t.title}</label>
+				<textarea
+					id="comment-content"
+					class="field"
+					bind:value={content}
+					bind:this={mainInputEl}
+					rows="3"
+					maxlength={maxContentLength}
+					required
+					placeholder={t.placeholder}></textarea>
+
+				<!-- 微信访客身份：未登录显示入口，已登录显示昵称与退出；身份三字段随之隐藏 -->
+				{#if wechatEnabled && !account}
+					<div class="wechat-identity">
+						{#if wechatVisitor}
+							{#if wechatVisitor.avatar}
+								<img class="wechat-avatar" src={wechatVisitor.avatar} alt="" />
+							{/if}
+							<span class="wechat-name">
+								{t.wechatAs.replace('{name}', wechatVisitor.nickname)}
+							</span>
+							<a
+								class="wechat-link"
+								href={`/oauth/wechat/logout?returnTo=${encodeURIComponent(returnTo())}`}
+							>
+								{t.wechatLogout}
+							</a>
+						{:else}
+							<a
+								class="wechat-link"
+								href={`/oauth/wechat/start?returnTo=${encodeURIComponent(returnTo())}`}
+							>
+								{t.wechatLogin}
+							</a>
+						{/if}
+					</div>
 				{/if}
-				<span class="emoji-anchor">
-					<button
-						type="button"
-						class="btn-emoji"
-						title="emoji"
-						aria-label="emoji"
-						onclick={(e) => toggleEmojiPicker('main', e.currentTarget)}
-					>😊</button>
-					<!-- 浮层：从 emoji 按钮上方弹出（右缘对齐、向左展开），不顶起表单 -->
-					{#if emojiFor === 'main'}
-						<EmojiPicker flip={emojiAlign === 'right'} onpick={insertEmoji} />
+
+				<div class="composer-meta">
+					{#if !account && !wechatVisitor}
+						<input
+							id="comment-author"
+							class="field field-sm"
+							type="text"
+							bind:value={authorName}
+							maxlength={MAX_AUTHOR_NAME_LENGTH}
+							placeholder={t.nameOptional}
+							autocomplete="name"
+						/>
+						<input
+							id="comment-email"
+							class="field field-sm"
+							type="email"
+							bind:value={email}
+							maxlength={MAX_EMAIL_LENGTH}
+							required={!guestEmailOptional}
+							placeholder={guestEmailOptional ? t.emailOptional : t.emailLabel}
+							autocomplete="email"
+						/>
+						<input
+							id="comment-website"
+							class="field field-sm"
+							type="url"
+							bind:value={website}
+							maxlength={MAX_WEBSITE_LENGTH}
+							placeholder={t.websiteLabel}
+							autocomplete="url"
+						/>
 					{/if}
-				</span>
-				{#if canOfficial}
-					<label class="official-check">
-						<input type="checkbox" bind:checked={markOfficial} />
-						{t.officialBadge}
-					</label>
+					<span class="emoji-anchor">
+						<button
+							type="button"
+							class="btn-emoji"
+							title="emoji"
+							aria-label="emoji"
+							onclick={(e) => toggleEmojiPicker('main', e.currentTarget)}
+						>
+							😊
+						</button>
+						<!-- 浮层：从 emoji 按钮上方弹出（右缘对齐、向左展开），不顶起表单 -->
+						{#if emojiFor === 'main'}
+							<EmojiPicker flip={emojiAlign === 'right'} onpick={insertEmoji} />
+						{/if}
+					</span>
+					{#if canOfficial}
+						<label class="official-check">
+							<input type="checkbox" bind:checked={markOfficial} />
+							{t.officialBadge}
+						</label>
+					{/if}
+					<button type="submit" class="btn btn-primary" disabled={submitting}>
+						{submitting ? t.submitting : t.submit}
+					</button>
+				</div>
+
+				{#if captchaRequired}
+					<CaptchaField
+						svg={captchaSvg}
+						bind:answer={captchaAnswer}
+						loading={captchaLoading}
+						label={t.captchaLabel}
+						onrefresh={loadCaptcha}
+					/>
 				{/if}
-				<button type="submit" class="btn btn-primary" disabled={submitting}>
-					{submitting ? t.submitting : t.submit}
-				</button>
-			</div>
 
-			{#if captchaRequired}
-				<CaptchaField
-					svg={captchaSvg}
-					bind:answer={captchaAnswer}
-					loading={captchaLoading}
-					label={t.captchaLabel}
-					onrefresh={loadCaptcha}
-				/>
-			{/if}
-
-			{#if submitted}
-				<p class="sc-comments-note is-success">{submittedPending ? t.moderation : t.published}</p>
-			{:else if errorMsg}
-				<p class="sc-comments-note is-danger">{errorMsg}</p>
-			{/if}
-			{#if flash}
-				<p class="sc-comments-note is-success">{flash}</p>
-			{/if}
-		</form>
+				{#if submitted}
+					<p class="sc-comments-note is-success">{submittedPending ? t.moderation : t.published}</p>
+				{:else if errorMsg}
+					<p class="sc-comments-note is-danger">{errorMsg}</p>
+				{/if}
+				{#if flash}
+					<p class="sc-comments-note is-success">{flash}</p>
+				{/if}
+			</form>
 		{/if}
 
 		{#if !loading && (tops.length > 0 || hasMore)}
@@ -978,12 +991,12 @@
 					type="button"
 					class:is-active={sortMode === 'latest'}
 					onclick={() => setSort('latest')}
-				>{t.sortLatest}</button>
-				<button
-					type="button"
-					class:is-active={sortMode === 'hot'}
-					onclick={() => setSort('hot')}
-				>{t.sortHot}</button>
+				>
+					{t.sortLatest}
+				</button>
+				<button type="button" class:is-active={sortMode === 'hot'} onclick={() => setSort('hot')}>
+					{t.sortHot}
+				</button>
 			</div>
 		{/if}
 
@@ -1011,7 +1024,9 @@
 										class="btn btn-sm load-replies"
 										disabled={threadPage.loading}
 										onclick={() => loadThreadReplies(c.id)}
-									>{threadPage.loading ? '…' : t.loadMoreReplies}</button>
+									>
+										{threadPage.loading ? '…' : t.loadMoreReplies}
+									</button>
 								{/if}
 							</div>
 						{/if}
@@ -1078,10 +1093,14 @@
 						bind:value={editContent}
 						rows="3"
 						maxlength={maxContentLength}
-						required
-					></textarea>
+						required></textarea>
 					<div class="reply-form-actions">
-						<button type="button" class="btn btn-primary btn-sm" disabled={editBusy} onclick={() => saveEdit(c)}>
+						<button
+							type="button"
+							class="btn btn-primary btn-sm"
+							disabled={editBusy}
+							onclick={() => saveEdit(c)}
+						>
 							{editBusy ? '…' : t.save}
 						</button>
 						<button type="button" class="btn btn-sm" onclick={cancelEdit}>{t.cancel}</button>
@@ -1090,14 +1109,12 @@
 			{:else}
 				<p class="comment-body">
 					{#if isReply && c.parentId && replyTargetName(c)}
-						<span class="reply-target">{t.replyToPrefix}
-							<button
-								type="button"
-								class="reply-mention"
-								onclick={() => jumpToParent(c.parentId)}
-							>@{replyTargetName(c)}</button
-							></span
-						>
+						<span class="reply-target">
+							{t.replyToPrefix}
+							<button type="button" class="reply-mention" onclick={() => jumpToParent(c.parentId)}>
+								@{replyTargetName(c)}
+							</button>
+						</span>
 					{/if}{c.content}
 				</p>
 			{/if}
@@ -1111,7 +1128,8 @@
 			<div class="comment-actions">
 				<button
 					type="button"
-					onclick={() => (replyTo = replyTo?.id === c.id ? null : { id: c.id, name: c.authorName ?? t.guest })}
+					onclick={() =>
+						(replyTo = replyTo?.id === c.id ? null : { id: c.id, name: c.authorName ?? t.guest })}
 				>
 					{t.reply}
 				</button>
@@ -1123,7 +1141,8 @@
 					title={likedIds.has(c.id) ? t.unlike : t.like}
 					onclick={() => like(c)}
 				>
-					♥ {c.likes > 0 ? c.likes : ''} {likedIds.has(c.id) ? '' : t.like}
+					♥ {c.likes > 0 ? c.likes : ''}
+					{likedIds.has(c.id) ? '' : t.like}
 				</button>
 				<button type="button" onclick={() => report(c)}>{t.report}</button>
 				{#if c.mine && editingId !== c.id}
@@ -1152,8 +1171,7 @@
 						rows="2"
 						maxlength={maxContentLength}
 						required
-						placeholder={t.replyPlaceholder}
-					></textarea>
+						placeholder={t.replyPlaceholder}></textarea>
 					{#if captchaRequired}
 						<CaptchaField
 							svg={captchaSvg}
@@ -1169,7 +1187,9 @@
 							class="btn-emoji"
 							aria-label="emoji"
 							onclick={(e) => toggleEmojiPicker('reply', e.currentTarget)}
-						>😊</button>
+						>
+							😊
+						</button>
 						<!-- 浮层：同主表单，不顶起操作行 -->
 						{#if emojiFor === 'reply'}
 							<EmojiPicker flip={emojiAlign === 'right'} onpick={insertEmoji} />

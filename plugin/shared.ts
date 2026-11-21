@@ -66,6 +66,8 @@ export interface CommentListBody {
 	enabled?: boolean;
 	/** 站点开启「游客邮箱可留空」 */
 	guestEmailOptional?: boolean;
+	/** 站点允许匿名游客评论；false 时前端在无身份时提示登录（登录用户/微信访客不受限） */
+	allowGuest?: boolean;
 	/** 当前用户是站方成员（可勾选官方标） */
 	canOfficial?: boolean;
 	/** 内容级设置（创作者控制） */

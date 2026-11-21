@@ -130,8 +130,9 @@ export function registerPublicApi(d: ApiDeps): void {
 					return json({ error: 'Comments are disabled here' }, 403);
 				}
 
-				// 游客评论开关：关闭时未登录一律拒绝
-				if (!user && !cfg.bool('allowGuest', true)) {
+				// 游客评论开关：关闭时匿名游客拒绝；CMS 登录用户与微信访客都是
+				// 已认证身份，按「仅登录用户可评」放行
+				if (!user && !visitor && !cfg.bool('allowGuest', true)) {
 					return json({ error: 'Login required' }, 403);
 				}
 
