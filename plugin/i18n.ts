@@ -35,6 +35,9 @@ export const messages: Record<string, Record<string, string>> = {
 	wechatAs: { zh: '以 {name} 身份评论', en: 'Commenting as {name}' },
 	wechatLogout: { zh: '退出', en: 'Sign out' },
 	wechatBadge: { zh: '微信', en: 'WeChat' },
+	// 管理端评论列表的登录来源筛选（toolbar 插槽）
+	listFilter_source: { zh: '登录来源', en: 'Sign-in source' },
+	listFilter_allSources: { zh: '全部来源', en: 'All sources' },
 	// 相对时间（前台 timeOf 取词）：此前在组件里硬编码中英双语，
 	// 站点接入第三语言时只能二选一，且 <html lang> 未设时恒落到英文分支。
 	// 带占位符 {n}，由前端替换计数。

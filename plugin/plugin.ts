@@ -76,7 +76,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.3.0',
+		version: '0.3.1',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、微信登录身份、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, WeChat sign-in identity, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
@@ -482,6 +482,14 @@ const plugin: Plugin = {
 		ctx.slot.register(
 			'collection-list-row-actions:comments',
 			'components/slot-comment-admin-actions.svelte'
+		);
+
+		// 管理端列表工具栏插槽：评论审核工作台的「登录来源」筛选。通用列表的
+		// 快捷筛选只认 select / radio 字段，visitorProvider 是服务端文本列；
+		// 组件把选中的值写进 filter_visitorProvider，服务端对任意字段等值过滤。
+		ctx.slot.register(
+			'collection-list-toolbar-before',
+			'components/slot-comment-list-filter.svelte'
 		);
 
 		// 内容管线 filter：本插件集合落库前归一（与 example 同款形态）。
