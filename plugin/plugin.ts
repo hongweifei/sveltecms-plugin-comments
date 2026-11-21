@@ -56,6 +56,22 @@ import { messages } from './i18n';
  * - validate.ts（输入归一 / 绑定 / 黑名单解析，纯函数层）
  */
 
+/**
+ * 服务端托管字段：绑定三键（path / contentType / contentId）由提交与回复链路
+ * 写入，设备环境三项（os / browser / region）由 UA / IP 解析写入，内容归属
+ * 由插件写入。后台编辑表单不渲染这七列（见字段 condition），管理端只做审核
+ * 与正文修订；update 载荷里出现这些键一律丢弃，防止表单回填的 null 抹掉库内值。
+ */
+const SERVER_OWNED_FIELDS = [
+	'path',
+	'contentType',
+	'contentId',
+	'contentOwnerId',
+	'os',
+	'browser',
+	'region'
+] as const;
+
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
@@ -223,47 +239,60 @@ const plugin: Plugin = {
 					labelI18n: { en: 'Website' }
 				},
 				{
+					// 设备环境三项（os / browser / region）是提交时刻服务端从 UA 与 IP
+					// 解析出的存证：列表可见，编辑表单不渲染（condition 恒不成立）。
+					// 保存时由 beforeWrite 丢弃这些键，库内既有值保持不动。
 					name: 'os',
 					type: 'text',
 					label: '操作系统',
-					labelI18n: { en: 'OS' }
+					labelI18n: { en: 'OS' },
+					condition: { field: 'id', value: '__never__' }
 				},
 				{
 					name: 'browser',
 					type: 'text',
 					label: '浏览器',
-					labelI18n: { en: 'Browser' }
+					labelI18n: { en: 'Browser' },
+					condition: { field: 'id', value: '__never__' }
 				},
 				{
 					name: 'region',
 					type: 'text',
 					label: '地区',
-					labelI18n: { en: 'Region' }
+					labelI18n: { en: 'Region' },
+					condition: { field: 'id', value: '__never__' }
 				},
 				{
+					// 绑定键三项（path / contentType / contentId）由服务端写入：提交时
+					// 归一落库、回复时沿用父绑定。新建评论时填写绑定，既有评论只读——
+					// condition 以「新建尚无 id」为条件（String(undefined) === 'undefined'），
+					// 编辑时 id 已有值，字段不进表单，beforeWrite 同时丢弃对应载荷键。
 					name: 'path',
 					type: 'text',
 					label: '页面路径',
-					labelI18n: { en: 'Page Path' }
+					labelI18n: { en: 'Page Path' },
+					condition: { field: 'id', value: undefined }
 				},
 				{
 					// 内容类型判别（集合 slug）：contentId 跨集合不保证唯一，绑定查询
-					// 带类型防串扰。由服务端提交/回复链路落库，管理端仅可见
+					// 带类型防串扰。由服务端提交/回复链路落库（新建评论时填写）
 					name: 'contentType',
 					type: 'text',
 					label: '内容类型',
-					labelI18n: { en: 'Content Type' }
+					labelI18n: { en: 'Content Type' },
+					condition: { field: 'id', value: undefined }
 				},
 				{
 					name: 'contentId',
 					type: 'text',
 					label: '内容项 ID',
-					labelI18n: { en: 'Content ID' }
+					labelI18n: { en: 'Content ID' },
+					condition: { field: 'id', value: undefined }
 				},
 				{
 					// 内容归属：评论所属内容的作者标识。由服务端在提交与回复时写入，
 					// 后台按它授予创作者审核权限（RBAC 条件 contentOwnerId = user.id）。
-					// 表单不展示（条件恒不成立），仅作为授权与过滤依据。
+					// 表单恒不展示，仅作为授权与过滤依据。
 					name: 'contentOwnerId',
 					type: 'text',
 					label: '内容归属',
@@ -308,6 +337,7 @@ const plugin: Plugin = {
 					'email',
 					'content',
 					'path',
+					'contentType',
 					'contentId',
 					'os',
 					'browser',
@@ -436,6 +466,13 @@ const plugin: Plugin = {
 				const data = value as Record<string, unknown>;
 				// 写载荷可能是部分补丁（如批量审核只带 status）——只归一载荷中实际出现的字段
 				const next: Record<string, unknown> = { ...data };
+				// 服务端托管字段（绑定键 + 采集存证）：编辑表单不渲染它们（见字段
+				// condition），框架的表单解析仍会把未渲染字段按 null 回填——update
+				// 前整键移除，库内既有值原样保留。插件自身写入走 ctx.db 直连，
+				// 不经此挂点。
+				if (fctx.action === 'update') {
+					for (const field of SERVER_OWNED_FIELDS) delete next[field];
+				}
 				if (typeof next.content === 'string') next.content = next.content.trim();
 				if ('authorName' in next) next.authorName = sanitizeAuthorName(next.authorName) || null;
 				if ('path' in next && next.path !== null) next.path = normalizePagePath(next.path);

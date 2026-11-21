@@ -21,7 +21,10 @@ describe('comments plugin register wiring', () => {
 		expect(built.collectionRegister).toHaveBeenCalledTimes(1);
 		const collection = built.collectionRegister.mock.calls[0][0] as {
 			slug: string;
-			fields: { name: string }[];
+			fields: {
+				name: string;
+				condition?: { field: string; value: unknown };
+			}[];
 			list: {
 				columns: string[];
 				searchable: string[];
@@ -53,6 +56,7 @@ describe('comments plugin register wiring', () => {
 			'email',
 			'content',
 			'path',
+			'contentType',
 			'contentId',
 			'os',
 			'browser',
@@ -62,6 +66,19 @@ describe('comments plugin register wiring', () => {
 			'reportReasons',
 			'createdAt'
 		]);
+
+		// 服务端托管字段：设备环境与内容归属恒不进表单；绑定三键在新建时填写，
+		// 编辑时隐藏（condition 以「新建尚无 id」为条件）
+		const fieldCondition = (name: string) =>
+			collection.fields.find((f) => f.name === name)?.condition;
+		for (const name of ['os', 'browser', 'region', 'contentOwnerId']) {
+			expect(fieldCondition(name)).toEqual({ field: 'id', value: '__never__' });
+		}
+		for (const name of ['path', 'contentType', 'contentId']) {
+			const condition = fieldCondition(name);
+			expect(condition?.field).toBe('id');
+			expect(condition?.value).toBeUndefined();
+		}
 		expect(collection.list.searchable).toEqual(['authorName', 'content', 'path']);
 		expect(collection.list.batchActions.map((a) => a.value)).toEqual([
 			'approved',
@@ -183,5 +200,45 @@ describe('comments plugin register wiring', () => {
 		).toEqual({ status: 'approved' });
 		// 缺 action → 不注入（保守：仅明确 create 语义才兜底）
 		expect(filter({ content: 'hi' }, { collection: 'comments' })).toEqual({ content: 'hi' });
+	});
+
+	it('content:beforeWrite update 丢弃服务端托管字段（表单未渲染不抹库内值）', async () => {
+		const built = await setup();
+		const filter = built.filterRegister.mock.calls[0][1] as (
+			value: unknown,
+			fctx: { collection: string; action?: string }
+		) => unknown;
+
+		// 编辑表单只渲染可人工维护的字段；框架的表单解析会把未渲染字段按 null
+		// 回填——update 前整键移除，绑定、设备环境与内容归属保持原值
+		const payload = {
+			content: '修订后正文',
+			status: 'approved',
+			path: null,
+			contentType: null,
+			contentId: null,
+			contentOwnerId: null,
+			os: null,
+			browser: null,
+			region: null
+		};
+		expect(filter(payload, { collection: 'comments', action: 'update' })).toEqual({
+			content: '修订后正文',
+			status: 'approved'
+		});
+
+		// 新建评论时绑定三键仍可填写（落库前归一）
+		expect(
+			filter(
+				{ content: 'hi', path: '/x/?q=1', contentId: 'c-1', contentType: 'posts' },
+				{ collection: 'comments', action: 'create' }
+			)
+		).toEqual({
+			content: 'hi',
+			path: '/x',
+			contentId: 'c-1',
+			contentType: 'posts',
+			visitorId: 'admin'
+		});
 	});
 });
