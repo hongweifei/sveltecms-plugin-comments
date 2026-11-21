@@ -62,6 +62,19 @@ describe('GET /list', () => {
 		expect(body.total).toBe(1);
 	});
 
+	it('历史行存离线库原始记录时，读取按展示文本归一', async () => {
+		const built = await setup([
+			commentRow({ id: 'legacy-1', path: '/a', region: '中国|广东省|广州市|电信|CN' })
+		]);
+		const list = getEndpoint(built, 'GET', '/list');
+
+		const res = await list.handler(
+			mockEvent({ method: 'GET', url: `${BASE}/list?path=%2Fa&page=1&pageSize=20` })
+		);
+		const body = (await res.json()) as { data: { region: string | null }[] };
+		expect(body.data[0].region).toBe('中国·广东省·广州市·电信');
+	});
+
 	it('QQ 邮箱解析为 qlogo 头像，普通邮箱走 cravatar，无邮箱为 null', async () => {
 		const built = await setup([
 			commentRow({ id: 'qq-1', path: '/a', email: '12345678@QQ.com' }),

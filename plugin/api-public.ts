@@ -48,7 +48,8 @@ export function registerPublicApi(d: ApiDeps): void {
 	// spam（对外仍是 success，机器人无从探测）；客户端不可信，状态一律
 	// 强制 pending，经后台审核后才对外可见（本人除外——列表端点按
 	// visitorId/userId 并入本人待审）。邮箱仅存储（gravatar 源），对外
-	// 只出哈希；os/browser 同步记入，region 异步解析后回填（best-effort）。
+	// 只出哈希；os/browser/region 在落库前一并解析记入（best-effort），
+	// region 归一成「国家·省份·城市·运营商」展示文本。
 	// 登录用户头像不再快照——列表时按 user 表实时反查（manifest 声明
 	// 'user' 系统表），账号换头像即刻生效。
 	ctx.api.register({

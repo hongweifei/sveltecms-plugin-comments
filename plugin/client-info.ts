@@ -5,7 +5,8 @@
  * - UA 解析用仓库依赖 ua-parser-js（先 matchesGim 浏览器主版本号）
  * - 系统名走框架 parseOS（Client Hints 优先判 Win11，与 audit 同源）
  * - IP 归属地用 #lib/common/server/ip-region 的 lookupRegion（ip2region
- *   离线库 + 内置缓存，best-effort，失败留空）
+ *   离线库 + 内置缓存，best-effort，失败留空），落库前经本插件的
+ *   formatRegion 归一成展示文本（不依赖宿主版本）
  * - 登录用户的头像 / 昵称走 user 表实时反查（依赖 manifest 声明的
  *   'user' 系统表只读权限）
  *
@@ -19,6 +20,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { getChPlatform, getChPlatformVersion, parseOS } from '#lib/common/server/request-context.ts';
 import { lookupRegion } from '#lib/common/server/ip-region.ts';
+import { formatRegion } from './region';
 import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import type { CommentRow, ResolvedUser } from './helpers';
 
@@ -65,10 +67,13 @@ export function createClientInfoService(ctx: ContextWithDb): ClientInfoService {
 	return {
 		async collect(ua, ip) {
 			const parser = new UAParser(ua ?? '');
+			// 离线库原始记录带竖线、占位符 0 与国家代码，落库前归一成展示文本；
+			// 新版宿主的 lookupRegion 已归一，重复格式化保持原样
+			const region = formatRegion(await lookupRegion(ip)) || null;
 			return {
 				os: parseOS(getChPlatform() ?? '', getChPlatformVersion() ?? '', ua ?? undefined) || null,
 				browser: formatBrowserPart(parser.getBrowser()),
-				region: await lookupRegion(ip)
+				region
 			};
 		},
 		async resolveUsers(rows) {

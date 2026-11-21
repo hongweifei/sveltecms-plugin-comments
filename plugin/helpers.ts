@@ -5,6 +5,7 @@
  */
 import type { RequestEvent } from '@sveltejs/kit';
 import { emailAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
+import { formatRegion } from './region';
 import type { CommentBinding } from './validate';
 import { resolveBinding } from './validate';
 import type { PublicComment } from './shared';
@@ -136,6 +137,9 @@ export function bindingMatches(
  * hideEnv（B2a）：站点开启「前台隐藏设备环境」时 os/browser/region 输出 null
  * （库里仍存，管理端可见）——IP 属地对隐私敏感的站点不再公开。
  *
+ * region 出口统一归一成「国家·省份·城市·运营商」：历史行存的是离线库原始
+ * 竖线记录，读取时格式化即可与新评论一致，无需迁移数据。
+ *
  * isAuthor（作者标）**不落列存储**——「评论人是否内容作者」是纯派生量（评论
  * userId 联内容记录 userId），存列既冗余、又会在内容转作者后撒谎。调用方
  * 解析出本绑定内容作者的 userId 传入 opts.contentAuthorId，投影即派生。
@@ -166,7 +170,7 @@ export function toPublic(
 		website: typeof row.website === 'string' && row.website ? row.website : null,
 		os: hideEnv ? null : typeof row.os === 'string' && row.os ? row.os : null,
 		browser: hideEnv ? null : typeof row.browser === 'string' && row.browser ? row.browser : null,
-		region: hideEnv ? null : typeof row.region === 'string' && row.region ? row.region : null,
+		region: hideEnv ? null : formatRegion(typeof row.region === 'string' ? row.region : null) || null,
 		mine,
 		pending: row.status === 'pending'
 	};
