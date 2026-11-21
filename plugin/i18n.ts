@@ -29,7 +29,7 @@ export const messages: Record<string, Record<string, string>> = {
 		en: 'Optional: why are you reporting this?'
 	},
 	websiteLabel: { zh: '主页（可选）', en: 'Website (optional)' },
-	// 微信访客身份（框架 /oauth/wechat/*）：登录后隐藏身份三字段，昵称与头像
+	// 访客身份（框架 /oauth/visitor/*）：登录后隐藏身份三字段，昵称与头像
 	// 由签名 cookie 提供；徽章标在评论作者名后。
 	visitorLogin: { zh: '使用{provider}登录', en: 'Sign in with {provider}' },
 	visitorAs: { zh: '以 {name} 身份评论', en: 'Commenting as {name}' },
