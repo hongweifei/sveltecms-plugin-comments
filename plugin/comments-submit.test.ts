@@ -387,21 +387,26 @@ describe('POST /submit', () => {
 	});
 });
 
-describe('POST /submit 官方标（站方门禁 + 免审）', () => {
-	// roles 行：admin 角色 appAccess=true（站方）、user 角色 false（普通登录者）
-	const roleRow = (name: string, appAccess: boolean) => ({
+describe('POST /submit 官方标（官方身份门禁 + 免审）', () => {
+	// roles 行：admin = 超级管理员（adminAccess）；user = 普通注册用户；
+	// creator = 创作者（能登录后台写内容，权限不跨内容审核）
+	const roleRow = (name: string, flags: { adminAccess: boolean; appAccess: boolean }) => ({
 		_collection: 'roles',
 		name,
-		appAccess,
-		adminAccess: appAccess,
+		appAccess: flags.appAccess,
+		adminAccess: flags.adminAccess,
 		permissions: '[]'
 	});
+	const adminRole = { adminAccess: true, appAccess: true };
+	const userRole = { adminAccess: false, appAccess: false };
+	const creatorRole = { adminAccess: false, appAccess: true };
 	const adminUser = { id: 'u-admin', name: '站长', role: 'admin' };
 	const normalUser = { id: 'u-alice', name: 'Alice', role: 'user' };
+	const creatorUser = { id: 'u-creator', name: '作者号', role: 'creator' };
 
 	it('站方成员勾选 → official:true 且免审直发 approved（即便审核开启）', async () => {
 		const built = await setup(
-			[roleRow('admin', true), roleRow('user', false)],
+			[roleRow('admin', adminRole), roleRow('user', userRole)],
 			{ moderation: true }
 		);
 		const submit = getEndpoint(built, 'POST', '/submit');
@@ -420,9 +425,9 @@ describe('POST /submit 官方标（站方门禁 + 免审）', () => {
 		expect(created.status).toBe('approved');
 	});
 
-	it('非站方即便伪造 official:true → 强制 false、正常走审核', async () => {
+	it('非官方身份即便伪造 official:true → 强制 false、正常走审核', async () => {
 		const built = await setup(
-			[roleRow('admin', true), roleRow('user', false)],
+			[roleRow('admin', adminRole), roleRow('user', userRole)],
 			{ moderation: true }
 		);
 		const submit = getEndpoint(built, 'POST', '/submit');
@@ -440,8 +445,48 @@ describe('POST /submit 官方标（站方门禁 + 免审）', () => {
 		expect(created.status).toBe('pending'); // 非站方仍受审核开关约束
 	});
 
-	it('游客勾选 official（无登录态）→ false（isStaff 无角色直接拒）', async () => {
-		const built = await setup([roleRow('admin', true)]);
+	it('创作者角色（有 appAccess、无 adminAccess）不具官方身份 → 勾选也强制 false', async () => {
+		const built = await setup(
+			[roleRow('admin', adminRole), roleRow('creator', creatorRole)],
+			{ moderation: true }
+		);
+		const submit = getEndpoint(built, 'POST', '/submit');
+		const res = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ official: true }),
+				user: creatorUser
+			})
+		);
+		expect(res.status).toBe(200);
+		const created = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
+		expect(created.official).toBe(false);
+		expect(created.status).toBe('pending');
+	});
+
+	it('officialRoles 白名单内的角色 → 可发官方回复且免审', async () => {
+		const built = await setup(
+			[roleRow('admin', adminRole), roleRow('creator', creatorRole)],
+			{ moderation: true, officialRoles: ['creator'] }
+		);
+		const submit = getEndpoint(built, 'POST', '/submit');
+		const res = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ official: true }),
+				user: creatorUser
+			})
+		);
+		expect(res.status).toBe(200);
+		const created = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
+		expect(created.official).toBe(true);
+		expect(created.status).toBe('approved');
+	});
+
+	it('游客勾选 official（无登录态）→ false（无角色直接拒）', async () => {
+		const built = await setup([roleRow('admin', adminRole)]);
 		const submit = getEndpoint(built, 'POST', '/submit');
 		const res = await submit.handler(
 			mockEvent({
@@ -454,9 +499,10 @@ describe('POST /submit 官方标（站方门禁 + 免审）', () => {
 		expect(created.official).toBe(false);
 	});
 
-	it('/list 对站方成员回传 canOfficial=true（前端据此显示勾选）', async () => {
+	it('/list 对官方身份回传 canOfficial=true（前端据此显示勾选）', async () => {
 		const built = await setup([
-			roleRow('admin', true),
+			roleRow('admin', adminRole),
+			roleRow('creator', creatorRole),
 			commentRow({ id: 'c1', path: '/a' })
 		]);
 		const list = getEndpoint(built, 'GET', '/list');
@@ -468,9 +514,30 @@ describe('POST /submit 官方标（站方门禁 + 免审）', () => {
 			})
 		);
 		expect(((await asAdmin.json()) as { canOfficial: boolean }).canOfficial).toBe(true);
+		// 创作者能登录后台，但不因此获得官方身份
+		const asCreator = await list.handler(
+			mockEvent({
+				method: 'GET',
+				url: `${BASE}/list?path=%2Fa`,
+				user: creatorUser
+			})
+		);
+		expect(((await asCreator.json()) as { canOfficial: boolean }).canOfficial).toBe(false);
 		const asGuest = await list.handler(
 			mockEvent({ method: 'GET', url: `${BASE}/list?path=%2Fa` })
 		);
 		expect(((await asGuest.json()) as { canOfficial: boolean }).canOfficial).toBe(false);
+	});
+
+	it('/list canOfficial 尊重 officialRoles 白名单', async () => {
+		const built = await setup(
+			[roleRow('admin', adminRole), roleRow('creator', creatorRole), commentRow({ id: 'c1', path: '/a' })],
+			{ officialRoles: ['creator'] }
+		);
+		const list = getEndpoint(built, 'GET', '/list');
+		const res = await list.handler(
+			mockEvent({ method: 'GET', url: `${BASE}/list?path=%2Fa`, user: creatorUser })
+		);
+		expect(((await res.json()) as { canOfficial: boolean }).canOfficial).toBe(true);
 	});
 });

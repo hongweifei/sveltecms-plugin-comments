@@ -245,6 +245,35 @@ describe('POST /admin/reply', () => {
 		expect(created.rootId).toBeNull();
 	});
 
+	it('内容创作者经后台回复自己内容：免审直发，按作者评论呈现（不带官方徽章）', async () => {
+		const built = await setup([
+			// 创作者角色：能登录后台（appAccess），权限不跨内容审核（无 adminAccess）
+			{
+				_collection: 'roles',
+				name: 'creator',
+				appAccess: true,
+				adminAccess: false,
+				permissions: '[]'
+			},
+			// pages 记录：路径 '/a' 的归属作者是 creator-1（path 绑定经桥反查）
+			{ _collection: 'pages', id: 'page-a', slug: 'a', parentId: null, userId: 'creator-1' }
+		]);
+		const reply = getEndpoint(built, 'POST', '/admin/reply');
+
+		const res = await reply.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/admin/reply`,
+				body: { content: '作者回复', path: '/a' },
+				user: { id: 'creator-1', name: '作者号', role: 'creator' }
+			})
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { comment: { official: boolean; pending: boolean } };
+		expect(body.comment.official).toBe(false);
+		expect(body.comment.pending).toBe(false);
+	});
+
 	it('locks rootId when replying into a thread and requires a binding', async () => {
 		const built = await setup([commentRow({ id: 'root-1', path: '/a' })]);
 		const reply = getEndpoint(built, 'POST', '/admin/reply');

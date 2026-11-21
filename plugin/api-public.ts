@@ -13,7 +13,7 @@ import { clampPaging, isHoneypotFilled, matchBlacklist, normalizeId, validateSub
 import type { ApiDeps } from './deps';
 
 export function registerPublicApi(d: ApiDeps): void {
-	const { CHILD_CAP, COUNT_TTL_MS, blacklistService, bustCount, cfg, contentSettings, countCache, ctx, info, isStaff, lastCommentAt, pagePaths, sendReplyMail, submitLimiter } = d;
+	const { CHILD_CAP, COUNT_TTL_MS, blacklistService, bustCount, canPostOfficial, cfg, contentSettings, countCache, ctx, info, lastCommentAt, pagePaths, sendReplyMail, submitLimiter } = d;
 
 	/**
 	 * 作者标联查派生（不落列）：取本绑定内容记录的 userId——contentId 绑定按
@@ -184,12 +184,13 @@ export function registerPublicApi(d: ApiDeps): void {
 					const raw = (contentRecord as Record<string, unknown> | undefined)?.userId;
 					if (typeof raw === 'string' && raw) contentAuthorId = raw;
 				}
-				// 官方标（可选）：仅站方成员（roles.appAccess）可带——客户端声明不作数，
-				// 服务端按登录态 isStaff 复核；非站方即便传 official 也强制 false。
+				// 官方标（可选）：仅官方身份角色可带（adminAccess 角色或 officialRoles
+				// 白名单）——客户端声明不作数，服务端按登录态 canPostOfficial 复核；
+				// 无官方身份即便传 official 也强制 false。
 				// 官方评论与 /admin/reply 同语义：免审直发（status=approved），黑名单
 				// 命中仍进 spam（站方账号被盗/误发的兜底）。
 				const wantOfficial = parsed.body.official === true || parsed.body.official === 'true';
-				const official = wantOfficial ? await isStaff(user) : false;
+				const official = wantOfficial ? await canPostOfficial(user) : false;
 				// 黑名单命中静默进 spam；官方/免审 → approved；否则按审核开关
 				const status = hit
 					? 'spam'
@@ -501,9 +502,9 @@ export function registerPublicApi(d: ApiDeps): void {
 				allowGuest: cfg.bool('allowGuest', true),
 				// B2b：游客邮箱可留空时前端输入框去掉必填（服务端同步放行）
 				guestEmailOptional: cfg.bool('guestEmailOptional', false),
-				// 官方标（可选）：当前登录用户是站方成员时前端才显示「官方」勾选框
-				// （服务端 isStaff 权威判定，非站方拿到也是 false，且 /submit 会复核）
-				canOfficial: await isStaff(event.locals.user),
+				// 官方标（可选）：当前登录用户具备官方身份时前端才显示「官方」勾选框
+				// （服务端 canPostOfficial 权威判定，无身份拿到也是 false，且 /submit 会复核）
+				canOfficial: await canPostOfficial(event.locals.user),
 				// 登录态下发：本应用 better-auth 端点不走 HTTP（/api/auth/* 410），
 				// 组件无法自行探测会话——viewer 非空即登录，前端隐藏身份输入，
 				// /submit 服务端按会话落身份（与此处同源，伪造无意义）

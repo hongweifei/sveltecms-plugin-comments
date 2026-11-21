@@ -75,7 +75,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.2.2',
+		version: '0.2.3',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
@@ -83,7 +83,7 @@ const plugin: Plugin = {
 		// SEC-5 声明式系统表权限（只读）：user 表用于登录用户头像/昵称实时反查；
 		// pages 表用于路径白名单 ↔ 记录换算（page-paths 桥：/list /count /submit
 		// 的 path 绑定解析内容级设置 + /admin/eligible 判定）；roles 表用于官方标
-		// 的站方成员判定（isStaff：role → appAccess，60s 缓存）。均为只读
+		// 的身份判定（canPostOfficial：adminAccess 或 officialRoles 白名单，60s 缓存）。
 		permissions: { readSystemTables: ['user', 'pages', 'roles'] },
 		// 管理端插件页渲染 boolean 为「开 / 关」。配置值一律以字符串落库
 		// （管理端表单一律字符串化），读取时布尔与字符串两种形态都认。
@@ -183,6 +183,20 @@ const plugin: Plugin = {
 				label: {
 					zh: '开启评论的内容类型',
 					en: 'Content types with comments enabled'
+				},
+				default: []
+			},
+			{
+				key: 'officialRoles',
+				type: 'multiselect',
+				allowCustom: true,
+				label: {
+					zh: '可发官方回复的角色（留空 = 仅超级管理员角色）',
+					en: 'Roles allowed to post official comments (empty = adminAccess roles only)'
+				},
+				placeholder: {
+					zh: '输入角色名后添加，如 editor',
+					en: 'Enter a role name, e.g. editor'
 				},
 				default: []
 			}
@@ -311,8 +325,8 @@ const plugin: Plugin = {
 				},
 				{
 					// 官方标（可选）：后台直接新建/编辑评论时可勾选，标记为站方发言
-					// （前台「官方」徽章）。前台 /submit 亦支持站方成员勾选（服务端
-					// isStaff 门禁，见 api-public）
+					// （前台「官方」徽章）。前台 /submit 亦支持官方身份角色勾选（服务端
+					// canPostOfficial 门禁，见 api-public）
 					name: 'official',
 					type: 'checkbox',
 					label: '官方回复',

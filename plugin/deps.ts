@@ -39,8 +39,10 @@ export interface ApiDeps {
 	bustCount: () => void;
 	lastCommentAt: (visitorId: string, userId?: string) => Promise<number | null>;
 	sendReplyMail: (toEmail: string, replyContent: string, path: string | null) => void;
-	/** 站方成员判定（官方标门禁）：userRole(user) → roles.appAccess；非登录/无角色 → false */
-	isStaff: (user: unknown) => Promise<boolean>;
+	/**
+	 * 官方标门禁：可发官方回复（adminAccess 角色或 officialRoles 白名单角色）
+	 */
+	canPostOfficial: (user: unknown) => Promise<boolean>;
 	/** 超管判定（跨内容审核门禁）：userRole(user) → roles.adminAccess */
 	isSuperAdmin: (user: unknown) => Promise<boolean>;
 	/**
@@ -141,41 +143,44 @@ export function createApiDeps(
 	}
 
 	/**
-	 * 站方成员判定（官方标门禁）：登录用户的 role 对应 roles.appAccess=true。
+	 * 官方标门禁（canPostOfficial）：登录用户可发官方回复的条件——角色行
+	 * adminAccess 为真（超级管理员），或角色名列入 officialRoles 白名单。
+	 *
+	 * appAccess 只代表「能登录后台」：内容创作者同样需要它，因此不构成官方
+	 * 身份依据。需要让编辑/运营角色发官方回复的站点，把角色名加进白名单。
+	 *
 	 * role 经框架 userRole() 守卫提取（better-auth 基础 User 类型不含 role），
 	 * 取自 session（服务端写入，客户端无法伪造；additionalFields input:false
 	 * 也挡了自助提权），权威判据再查 roles 表——按角色名 60s 缓存，角色调整
 	 * 一分钟内生效，官方标频率完全够用。非登录/无角色 → false（不发查询）。
 	 */
-	const staffCache = new Map<string, { at: number; ok: boolean }>();
-	async function isStaff(user: unknown): Promise<boolean> {
-		return roleFlag(user, 'appAccess');
+	const roleCache = new Map<string, { at: number; adminAccess: boolean }>();
+	async function canPostOfficial(user: unknown): Promise<boolean> {
+		const role = userRole(user);
+		if (!role) return false;
+		if (await roleAdminAccess(role)) return true;
+		return services.cfg.officialRoles().includes(role);
 	}
 
 	/** 超管判定：角色行的 adminAccess 为真（跨内容审核的门禁） */
 	async function isSuperAdmin(user: unknown): Promise<boolean> {
-		return roleFlag(user, 'adminAccess');
+		const role = userRole(user);
+		return role ? roleAdminAccess(role) : false;
 	}
 
-	/**
-	 * 角色标志位读取：按角色名查 roles 表并缓存 60 秒。
-	 * 非登录、无角色、查询失败一律返回 false（fail-closed）。
-	 */
-	async function roleFlag(user: unknown, flag: 'appAccess' | 'adminAccess'): Promise<boolean> {
-		const role = userRole(user);
-		if (!role) return false;
-		const key = `${role}:${flag}`;
-		const hit = staffCache.get(key);
-		if (hit && Date.now() - hit.at < 60_000) return hit.ok;
-		let ok = false;
+	/** 角色行的 adminAccess 标志：按角色名查 roles 表并缓存 60 秒，查询失败 false */
+	async function roleAdminAccess(role: string): Promise<boolean> {
+		const hit = roleCache.get(role);
+		if (hit && Date.now() - hit.at < 60_000) return hit.adminAccess;
+		let adminAccess = false;
 		try {
 			const res = await ctx.db.find('roles', { filter: { name: role }, limit: 1 });
-			ok = res.data.some((r) => (r as Record<string, unknown>)[flag] === true);
+			adminAccess = res.data.some((r) => (r as Record<string, unknown>).adminAccess === true);
 		} catch (e) {
 			ctx.logger.warn(`comments: role check failed for ${role}: ${String(e)}`);
 		}
-		staffCache.set(key, { at: Date.now(), ok });
-		return ok;
+		roleCache.set(role, { at: Date.now(), adminAccess });
+		return adminAccess;
 	}
 
 	/**
@@ -225,7 +230,7 @@ export function createApiDeps(
 		bustCount,
 		lastCommentAt,
 		sendReplyMail,
-		isStaff,
+		canPostOfficial,
 		isSuperAdmin,
 		contentOwnerId
 	};

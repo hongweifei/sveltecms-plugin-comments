@@ -412,8 +412,8 @@
 			contentId: contentId ?? undefined,
 			contentType: contentType ?? undefined,
 			parentId: replyTo?.id ?? undefined,
-			// 官方标（可选）：仅站方成员的表单显示勾选（canOfficial），勾选随提交
-			// 上送；服务端 isStaff 权威复核，非站方即便传也强制 false（防伪造）
+			// 官方标（可选）：仅具备官方身份的登录用户（canOfficial）显示勾选，勾选随提交
+			// 上送；服务端 canPostOfficial 权威复核，无身份即便传也强制 false（防伪造）
 			official: (replyTo ? replyOfficial : markOfficial) ? true : undefined,
 			// CAPTCHA（C1-3）：框架启用时随提交上送，服务端一次性消费
 			captchaId: captchaRequired ? captchaId || undefined : undefined,

@@ -32,7 +32,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 - `pending`：仅作者本人可见（按 `visitorId`/`userId` 匹配，带「审核中」标记，审核通过后即时公开）
 - `approved`：公开可见
 - `spam`：仅管理端可见
-- **官方回复免审**：站方成员（角色含 appAccess，即后台可登录的管理员/编辑）经管理端行内回复直接 `approved` + `official` 徽章
+- **官方回复免审**：具备官方身份的用户（角色 `adminAccess`，或角色名列入 `officialRoles` 白名单）经前台勾选或后台行内回复直接 `approved` + `official` 徽章。「能登录后台」（`appAccess`）只代表后台准入——内容创作者同样需要它，因此不构成官方身份；创作者回复自己内容下的评论按普通作者评论呈现（作者徽章由投影派生）。
 - 新评论一律服务端强制 `pending`（客户端传入状态不可信），审核关闭时才直发
 
 ## 站点级配置（站长）
@@ -51,6 +51,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 | `notifyReplies` | boolean | 开 | 收到回复**邮件**通知被回复者（需 SMTP）；审核开启时延迟到回复**通过后**补发，且同一回复只通知一次 |
 | `enabledPaths` | multiselect | 空 | 开启评论的页面路径白名单（可手输任意路径） |
 | `enabledTypes` | multiselect | 空 | 开启评论的内容类型（集合 slug）白名单 |
+| `officialRoles` | multiselect | 空 | 可发官方回复的角色名白名单（手输角色名；空 = 仅 `adminAccess` 角色）。`appAccess` 代表后台准入，不构成官方身份 |
 
 两个白名单留空 = 全站不开启（插件装上后默认静默）。值以字符串落库，布尔两种形态都认。
 

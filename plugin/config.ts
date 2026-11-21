@@ -37,6 +37,8 @@ export interface ConfigService {
 	commentsEnabledFor(path: string | null, contentType: string | null): boolean;
 	/** 站点是否声明了任何路径白名单（eligible 端点路径反查的零查询护栏） */
 	hasEnabledPaths(): boolean;
+	/** 可发官方回复的角色白名单（角色名；空 = 仅 roles.adminAccess 的角色） */
+	officialRoles(): string[];
 }
 
 /**
@@ -95,6 +97,7 @@ export function createConfigService(ctx: ConfigSource): ConfigService {
 			if (contentType && readList(get, 'enabledTypes').includes(contentType)) return true;
 			return false;
 		},
-		hasEnabledPaths: () => readList(get, 'enabledPaths').length > 0
+		hasEnabledPaths: () => readList(get, 'enabledPaths').length > 0,
+		officialRoles: () => readList(get, 'officialRoles')
 	};
 }

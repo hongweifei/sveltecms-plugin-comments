@@ -11,7 +11,7 @@ import { normalizeId, validateSubmitInput } from './validate';
 import type { ApiDeps } from './deps';
 
 export function registerAdminApi(d: ApiDeps): void {
-	const { blacklistService, cfg, contentSettings, ctx, info, pagePaths, contentOwnerId, isSuperAdmin } = d;
+	const { blacklistService, canPostOfficial, cfg, contentSettings, ctx, info, pagePaths, contentOwnerId, isSuperAdmin } = d;
 
 	/**
 	 * 内容归属校验：超管放行；其余登录用户只能管理自己内容下的评论。
@@ -27,7 +27,8 @@ export function registerAdminApi(d: ApiDeps): void {
 		return Boolean(ownerId && actorId && ownerId === actorId);
 	}
 
-	// 管理员回复：免审直接发布，official 标记供前台徽章；昵称默认取管理员名。
+	// 站方回复：免审直接发布，官方徽章按官方身份判定（adminAccess 角色或
+	// officialRoles 白名单）；昵称默认取登录者名。
 	ctx.api.register({
 		method: 'POST',
 		path: '/admin/reply',
@@ -87,7 +88,7 @@ export function registerAdminApi(d: ApiDeps): void {
 				contentOwnerId: await contentOwnerId({ path, contentId, contentType }),
 				parentId,
 				rootId,
-				official: true,
+				official: await canPostOfficial(user),
 				likes: 0,
 				reports: 0,
 				os,
