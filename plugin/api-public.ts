@@ -110,21 +110,8 @@ export function registerPublicApi(d: ApiDeps): void {
 
 				// 身份来源：CMS 登录用户取账号；微信访客取签名 cookie 解析出的
 				// locals.visitor（框架已验签，客户端传的昵称/邮箱不作数）；其余为游客。
-				// 以结构化断言读取而非依赖 App.Locals 声明：插件可在未含该字段的
-				// 旧版框架上运行，此时 visitor 恒为 undefined，退回匿名游客语义。
 				const user = event.locals.user;
-				const visitor = (
-					event.locals as {
-						visitor?: {
-							provider: 'wechat';
-							subject: string;
-							openid: string;
-							unionid?: string;
-							nickname: string;
-							avatar?: string;
-						};
-					}
-				).visitor;
+				const visitor = event.locals.visitor;
 				const result = validateSubmitInput(parsed.body, {
 					skipIdentity: Boolean(user || visitor),
 					// B2b：站点开启「游客邮箱可留空」时空值放行（登录路径本就 skipIdentity 不消费）

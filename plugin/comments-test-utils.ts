@@ -9,6 +9,10 @@ import type { RequestEvent } from '@sveltejs/kit';
 import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { createMockPluginContext } from '#lib/cms/engines/plugin/test-helpers.ts';
 import { computeVisitorId } from '#lib/cms/stats.ts';
+import {
+	MemoryRateLimitStore,
+	setRateLimitStore
+} from '#lib/common/server/rate-limit.ts';
 import plugin from './plugin';
 export { plugin };
 
@@ -180,6 +184,9 @@ export async function setup(
 	// 站点级白名单默认放行测试绑定（路径 /a + 类型 posts）；显式传参可覆盖
 	// （测试「留空 = 全关」时传 { enabledPaths: [], enabledTypes: [] }）
 	const merged = { enabledPaths: ['/a'], enabledTypes: ['posts'], ...config };
+	// 每个测例等价于一次全新进程：限流计数后端随 setup 重置，否则同一 IP
+	// 在多个用例间累计（共享后端下计数按命名空间持续存在）
+	setRateLimitStore(new MemoryRateLimitStore());
 	// 角色表种子：管理端端点的归属校验按角色标志位判定，测试默认超管角色
 	const seeded = [
 		...seed,
