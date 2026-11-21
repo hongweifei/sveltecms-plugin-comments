@@ -15,6 +15,7 @@
  *   沿 parentId 链 findById 上溯，仅两表未命中时调用，成本有界。
  */
 import type { PluginContext } from '#lib/cms/types/plugin.ts';
+import { normalizePagePath } from './validate';
 
 interface PageNode {
 	slug: string;
@@ -66,7 +67,10 @@ export function createPagePathService(ctx: PluginContext) {
 			}
 			for (const id of byId.keys()) {
 				const path = joinPath(byId, id);
-				if (path) byPath.set(path, id);
+				// 键统一用归一形态（解码百分号编码、去尾斜杠）：评论绑定侧的 path
+				// 已经是归一值，pages 的 slug 若含中文则以原文拼出，两边同口径才能命中
+				const key = path ? normalizePagePath(path) : null;
+				if (key) byPath.set(key, id);
 			}
 		} catch (e) {
 			ctx.logger.error(`comments: page path map build failed: ${String(e)}`);
@@ -79,12 +83,14 @@ export function createPagePathService(ctx: PluginContext) {
 		/** path（如 '/enterprise'）→ pages 记录 id；查不到返回 null */
 		async pathToRecordId(path: string): Promise<string | null> {
 			const { byPath } = await ensure();
-			return byPath.get(path) ?? null;
+			const key = normalizePagePath(path);
+			return key ? (byPath.get(key) ?? null) : null;
 		},
 		/** pages 记录 id → 公共路径（'/xxx'）；行缺失/链断裂返回 null */
 		async recordPath(id: string): Promise<string | null> {
 			const { byId } = await ensure();
-			return joinPath(byId, id);
+			const path = joinPath(byId, id);
+			return path ? normalizePagePath(path) : null;
 		},
 		/** 配置改动（如后台重排页面）后主动失效缓存 */
 		invalidate() {

@@ -237,6 +237,23 @@ describe('GET /list', () => {
 		expect(body.data.map((c) => c.id)).toEqual(['by-content']);
 	});
 
+	it('中文页面路径按原文存储：地址栏编码入参与库内可读路径命中同一条', async () => {
+		const built = await setup([commentRow({ id: 'cn-1', path: '/article/网络安全' })], {
+			enabledPaths: ['/article/网络安全']
+		});
+		const list = getEndpoint(built, 'GET', '/list');
+
+		const res = await list.handler(
+			mockEvent({
+				method: 'GET',
+				url: `${BASE}/list?path=%2Farticle%2F%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8`
+			})
+		);
+		const body = (await res.json()) as { data: { id: string }[]; enabled?: boolean };
+		expect(body.data.map((c) => c.id)).toEqual(['cn-1']);
+		expect(body.enabled).toBe(true);
+	});
+
 	// 方案 A 判别核心：不同集合可有同 contentId——声明类型时只回该类型行 +
 	// 历史空类型行，别的类型带同 id 的评论绝不串读进来。
 	it('contentId 跨集合不串读：声明 posts 时 pages 同 id 评论不可见', async () => {

@@ -8,6 +8,7 @@
  * 不读插件表，只读 ctx.config.get；注册时构造，闭包持有 ctx 即可。
  */
 import type { PluginContext } from '#lib/cms/types/plugin.ts';
+import { normalizePagePath } from './validate';
 
 /** 任意 ctx 的最小配置接口（解耦具体 PluginContext 类型，方便单测） */
 export interface ConfigSource {
@@ -72,6 +73,17 @@ function readList(get: ConfigGet, key: string): string[] {
 	return [];
 }
 
+/**
+ * 路径白名单命中：两边都按归一形态比（解码百分号编码、去尾斜杠）。
+ * 站长在配置里手输的是可读中文路径（如 `/关于我们`），评论绑定来自浏览器
+ * 地址栏（`/%E5%85%B3%E4%BA%8E…`）——两边归一到同一形态后精确命中。
+ */
+function pathListed(list: string[], path: string): boolean {
+	const target = normalizePagePath(path);
+	if (!target) return list.includes(path);
+	return list.some((entry) => normalizePagePath(entry) === target);
+}
+
 export function createConfigService(ctx: ConfigSource): ConfigService {
 	const get = ctx.config.get;
 	return {
@@ -79,7 +91,7 @@ export function createConfigService(ctx: ConfigSource): ConfigService {
 		num: (key, fallback) => readNum(get, key, fallback),
 		isModerationEnabled: () => readBool(get, 'moderation', true),
 		commentsEnabledFor(path, contentType) {
-			if (path && readList(get, 'enabledPaths').includes(path)) return true;
+			if (path && pathListed(readList(get, 'enabledPaths'), path)) return true;
 			if (contentType && readList(get, 'enabledTypes').includes(contentType)) return true;
 			return false;
 		},

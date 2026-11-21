@@ -78,10 +78,11 @@ export function bindingOf(source: URLSearchParams | Record<string, unknown>) {
 }
 
 /**
- * 绑定 → db.find 过滤条件（path 与 contentId 两键 AND，与旧行为一致）。
- * contentId 绑定额外带类型判别：声明类型时经 _$or 命中「同类型行 + 历史空
- * 类型行」（旧数据无 content_type，不能被新判别读丢）；未声明类型时退化为
- * 纯 contentId 匹配（headless 只传 id 的既有口径，无从判别）。
+ * 绑定 → db.find 过滤条件（path 与 contentId 两键 AND）。
+ * path 以归一后的可读原文存储与比较（见 validate.normalizePagePath），
+ * 中文路径按原文精确命中。
+ * contentId 绑定额外带类型判别：声明类型时经 _$or 命中「同类型行 + 空类型
+ * 行」；未声明类型时退化为纯 contentId 匹配（headless 只传 id 的口径）。
  */
 export function bindingFilter(binding: CommentBinding): Record<string, unknown> {
 	const filter: Record<string, unknown> = {};
@@ -103,7 +104,7 @@ export function bindingFilter(binding: CommentBinding): Record<string, unknown> 
  * 绑定匹配：评论与目标绑定共享任一键即视为同页（两键同时提供时需都匹配）。
  * 与插件双绑定语义一致——path/contentId 任一命中即同页。
  * 类型判别：双方都带 contentType 且不等 → 直接否（跨集合同 id 不互认）；
- * 评论行 contentType 为空（历史行）视为任意类型，保持兼容。
+ * 评论行 contentType 为空（历史行）视为任意类型。
  */
 export function bindingMatches(
 	row: { path?: unknown; contentId?: unknown; contentType?: unknown },

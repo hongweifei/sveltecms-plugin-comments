@@ -26,6 +26,8 @@ export const comments = sqliteTable(
 		website: text('website'),
 		userId: text('user_id'),
 		status: text('status').notNull().default('pending'),
+		// 页面路径：可读原文（中文段不 percent-encode）——后台列表直接可读，
+		// 与路径白名单、pages slug 同口径比较；库内若有编码形态，升级时归一回填
 		path: text('path'),
 		// 内容类型判别（集合 slug）：contentId 跨集合不保证全局唯一
 		// （SYSTEM_COLUMNS 不含 id，导入/自定义 id 可撞），仅按 content_id

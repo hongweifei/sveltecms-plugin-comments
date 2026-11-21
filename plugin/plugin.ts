@@ -59,7 +59,7 @@ import { messages } from './i18n';
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.2.0',
+		version: '0.2.2',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
@@ -464,6 +464,39 @@ const plugin: Plugin = {
 		// （停用保留表数据，dropData 才经 schemaRegistry 清理）。管理员推送通知
 		// = 插件自身职责（notifyReplies/notifyAuthor 配置 + ctx.notification 原语，
 		// 已在本文件实现）。
+	},
+
+	/**
+	 * 版本升级：把库内页面路径统一为可读原文。地址栏中的中文段是
+	 * percent-encoding（`/article/%E7%BD%91…`）；归一为原文后，后台列表、
+	 * 路径白名单与 pages slug 按同一形态呈现与比对。
+	 * 只改动归一后形态发生变化的行，幂等：再次执行即空转。
+	 */
+	async migrate(fromVersion, ctx) {
+		const SCAN = 500;
+		let normalized = 0;
+		try {
+			for (let page = 1; ; page++) {
+				const res = await ctx.db.find('comments', { limit: SCAN, page, sort: 'createdAt' });
+				const rows = res.data as Array<Record<string, unknown>>;
+				for (const row of rows) {
+					const raw = row.path;
+					if (typeof raw !== 'string' || !raw.includes('%')) continue;
+					const path = normalizePagePath(raw);
+					if (!path || path === raw) continue;
+					await ctx.db.update('comments', String(row.id), { path });
+					normalized++;
+				}
+				if (rows.length < SCAN) break;
+			}
+			if (normalized > 0) {
+				ctx.logger.info(
+					`comments: normalized ${normalized} page path(s) upgrading from v${fromVersion}`
+				);
+			}
+		} catch (e) {
+			ctx.logger.warn(`comments: page path normalization failed: ${String(e)}`);
+		}
 	}
 };
 

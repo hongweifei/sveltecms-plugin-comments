@@ -4,7 +4,7 @@ import { plugin, setup, type RegisteredEndpoint } from './comments-test-utils';
 describe('comments plugin manifest', () => {
 	it('declares official plugin identity with host engine gate and user-table permission', () => {
 		expect(plugin.manifest.name).toBe('comments');
-		expect(plugin.manifest.version).toBe('0.2.0');
+		expect(plugin.manifest.version).toBe('0.2.2');
 		expect(plugin.manifest.engines).toEqual({ cms: '^0.2' });
 		// SEC-5 声明式系统表权限（只读）：user 表用于登录用户头像/昵称实时反查
 		expect(plugin.manifest.permissions?.readSystemTables).toEqual(['user', 'pages', 'roles']);

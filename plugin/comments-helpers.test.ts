@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { UA, EMAIL } from './comments-test-utils';
-import { MAX_AUTHOR_NAME_LENGTH, MAX_CONTENT_LENGTH, isValidEmail, normalizePagePath, normalizeWebsite, sanitizeAuthorName, validateSubmitInput } from './validate';
+import {
+	MAX_AUTHOR_NAME_LENGTH,
+	MAX_CONTENT_LENGTH,
+	decodePagePath,
+	isValidEmail,
+	normalizePagePath,
+	normalizeWebsite,
+	pathToHref,
+	sanitizeAuthorName,
+	validateSubmitInput
+} from './validate';
 import { gravatarHash } from './client-info';
 import { UAParser } from 'ua-parser-js';
 
@@ -30,6 +40,30 @@ describe('input validation helpers', () => {
 			validateSubmitInput({ content: 'x'.repeat(MAX_CONTENT_LENGTH + 1), path: '/a', email: EMAIL })
 				.ok
 		).toBe(false);
+	});
+
+	it('normalizePagePath decodes percent-encoded segments into readable text', () => {
+		const encoded = '/article/%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8';
+		expect(normalizePagePath(encoded)).toBe('/article/网络安全');
+		// 已是原文的路径保持原样；尾斜杠折叠
+		expect(normalizePagePath('/article/网络安全/')).toBe('/article/网络安全');
+		expect(normalizePagePath('/a%20b')).toBe('/a b');
+		// 段内分隔符编码不还原：解码不能改变路径结构
+		expect(normalizePagePath('/a%2Fb')).toBe('/a%2Fb');
+		// 非法编码序列原样保留，不抛错不吞字符
+		expect(normalizePagePath('/100%off')).toBe('/100%off');
+		expect(decodePagePath('no-escapes')).toBe('no-escapes');
+		// 长度上限按解码后原文计：90 个汉字（地址栏 810 字符）在上限内
+		const cjk = `/${'网'.repeat(90)}`;
+		expect(normalizePagePath(cjk)).toBe(cjk);
+	});
+
+	it('pathToHref turns a readable path back into a URL path', () => {
+		expect(pathToHref('/article/网络安全')).toBe(
+			'/article/%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8'
+		);
+		expect(pathToHref('/a/?x=1')).toBe('/a');
+		expect(pathToHref(null)).toBe('/');
 	});
 });
 

@@ -113,6 +113,22 @@ describe('POST /submit', () => {
 		);
 	});
 
+	it('中文地址栏编码的页面路径按可读原文落库', async () => {
+		const built = await setup([], { enabledPaths: ['/article/网络安全'] });
+		const submit = getEndpoint(built, 'POST', '/submit');
+
+		const res = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ path: '/article/%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8' })
+			})
+		);
+		expect(res.status).toBe(200);
+		const created = built.dbCreate.mock.calls[0][1] as Record<string, unknown>;
+		expect(created.path).toBe('/article/网络安全');
+	});
+
 	it('returns the /list-shaped public projection so local insert matches reload', async () => {
 		const built = await setup();
 		const submit = getEndpoint(built, 'POST', '/submit');

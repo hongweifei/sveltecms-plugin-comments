@@ -48,8 +48,48 @@ export {
 const CONTENT_TYPE_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 
 /**
- * 归一页面路径：去 query/hash、折叠尾斜杠（根路径 "/" 保留）、限长。
- * 非法输入返回 null（与 contentId 二选一作为评论绑定键）。
+ * 百分号编码解码（逐段，保留路径结构）：浏览器的 `location.pathname` 对
+ * 中文等非 ASCII 段做 percent-encoding（`/article/%E7%BD%91…`）。落库前
+ * 还原为可读原文，后台列表直接可读，与路径白名单、pages slug（均存原文）
+ * 同一形态比较。
+ *
+ * - 逐段处理：段内 `%2F` / `%3F` / `%23` 保持编码——解码维持路径结构不变
+ * - 非法编码序列（如 `/100%off`）原样保留，不抛错、不吞字符
+ * - 常规路径（无 `%`）直返
+ */
+export function decodePagePath(path: string): string {
+	if (!path.includes('%')) return path;
+	return path
+		.split('/')
+		.map((seg) => {
+			if (!seg.includes('%')) return seg;
+			// 先给分隔符的编码「再转义一层」，解码后仍是 `%2F` 形态而非 '/'
+			const guarded = seg.replace(/%(2f|3f|23)/gi, (m) => `%25${m.slice(1)}`);
+			try {
+				return decodeURIComponent(guarded);
+			} catch {
+				return seg;
+			}
+		})
+		.join('/');
+}
+
+/** 路径 → 浏览器地址栏的规范编码形态（邮件链接等）：非法码点原样返回 */
+export function encodePagePath(path: string): string {
+	try {
+		return encodeURI(path);
+	} catch {
+		return path;
+	}
+}
+
+/**
+ * 归一页面路径：去 query/hash、解码百分号编码（中文段还原原文）、折叠尾斜杠
+ * （根路径 "/" 保留）、限长。非法输入返回 null（与 contentId 二选一作为评论
+ * 绑定键）。
+ *
+ * 解码发生在长度判定之前：300 字符上限按可读原文计（一个汉字在地址栏里是
+ * 9 个字符的 `%E6%96%87`，按编码形态限长会把正常中文长路径误判超长）。
  */
 export function normalizePagePath(raw: unknown): string | null {
 	if (typeof raw !== 'string') return null;
@@ -57,9 +97,15 @@ export function normalizePagePath(raw: unknown): string | null {
 	if (!path.startsWith('/')) return null;
 	const cut = path.search(/[?#]/);
 	if (cut !== -1) path = path.slice(0, cut);
+	path = decodePagePath(path).replace(/[\u0000-\u001f\u007f]/g, '');
 	if (path.length > 1) path = path.replace(/\/+$/, '');
 	if (!path || path.length > MAX_PATH_LENGTH) return null;
 	return path;
+}
+
+/** 绑定的路径 → 可点击 URL 片段：先归一（解码原文/去 query），再按 URL 规范编码 */
+export function pathToHref(raw: unknown): string {
+	return encodePagePath(normalizePagePath(raw) ?? '/');
 }
 
 /** 内容项 / 评论 ID 形态：非空短标识（与 baseColumns id 同源生成器对齐） */

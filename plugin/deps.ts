@@ -17,6 +17,7 @@ import type { ContentSettingsService } from './content-settings';
 import type { BlacklistService } from './blacklist';
 import type { ClientInfoService } from './client-info';
 import type { createPagePathService } from './page-paths';
+import { pathToHref } from './validate';
 
 export interface ApiDeps {
 	ctx: PluginContext;
@@ -128,7 +129,7 @@ export function createApiDeps(
 				ctx: {
 					title,
 					message: String(replyContent).slice(0, 120),
-					actionUrl: `${ctx.siteUrl}${path ?? '/'}`,
+					actionUrl: `${ctx.siteUrl}${pathToHref(path)}`,
 					actionLabel: ctx.i18n.t('mail_reply_action')
 				},
 				fallback: {

@@ -188,6 +188,21 @@ describe('内容级设置与精选评论（创作者控制，公众号模式）'
 		expect(await res.json()).toEqual({ eligible: false });
 	});
 
+	it('eligible：中文路径白名单与 pages 中文 slug 命中同一条记录', async () => {
+		const built = await setup([pageRow({ id: 'page-cn', slug: '关于我们' })], {
+			enabledPaths: ['/关于我们'],
+			enabledTypes: []
+		});
+		const eligible = getEndpoint(built, 'GET', '/admin/eligible');
+		const res = await eligible.handler(
+			mockEvent({
+				method: 'GET',
+				url: `${BASE}/admin/eligible?contentType=pages&recordId=page-cn`
+			})
+		);
+		expect(await res.json()).toEqual({ eligible: true });
+	});
+
 	it('/submit：path 提交命中路径白名单 + 该页记录设了 closed → 403（配了即生效）', async () => {
 		const built = await setup([pageRow(), entCs({ closed: true })], {
 			enabledPaths: ['/enterprise'],
