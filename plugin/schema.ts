@@ -25,6 +25,10 @@ export const comments = sqliteTable(
 		avatar: text('avatar'),
 		website: text('website'),
 		userId: text('user_id'),
+		// 访客登录来源（当前仅 'wechat'）：空 = 匿名游客或 CMS 登录用户。
+		// 公众号网页授权提交时写入，前台据此展示「微信」徽章；openid / unionid
+		// 不落库，去重仍沿用 visitorId 的 IP+UA 哈希。
+		visitorProvider: text('visitor_provider'),
 		status: text('status').notNull().default('pending'),
 		// 页面路径：可读原文（中文段不 percent-encode）——后台列表直接可读，
 		// 与路径白名单、pages slug 同口径比较；库内若有编码形态，升级时归一回填

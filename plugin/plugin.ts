@@ -69,16 +69,17 @@ const SERVER_OWNED_FIELDS = [
 	'contentOwnerId',
 	'os',
 	'browser',
-	'region'
+	'region',
+	'visitorProvider'
 ] as const;
 
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.2.3',
+		version: '0.3.0',
 		description: {
-			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
-			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
+			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、微信登录身份、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
+			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, WeChat sign-in identity, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
 		},
 		// SEC-5 声明式系统表权限（只读）：user 表用于登录用户头像/昵称实时反查；
 		// pages 表用于路径白名单 ↔ 记录换算（page-paths 桥：/list /count /submit
@@ -173,7 +174,10 @@ const plugin: Plugin = {
 					zh: '开启评论的页面路径',
 					en: 'Page paths with comments enabled'
 				},
-				placeholder: { zh: '手动输入路径，如 /about', en: 'Enter a path, e.g. /about' },
+				placeholder: {
+					zh: '手动输入路径，如 /about',
+					en: 'Enter a path, e.g. /about'
+				},
 				default: []
 			},
 			{
@@ -304,6 +308,15 @@ const plugin: Plugin = {
 					condition: { field: 'id', value: undefined }
 				},
 				{
+					// 访客登录来源（当前仅 wechat）：由提交链路按 locals.visitor
+					// 写入，表单不渲染、编辑不覆盖；管理端列表可见，前台据此出徽章。
+					name: 'visitorProvider',
+					type: 'text',
+					label: '登录来源',
+					labelI18n: { en: 'Sign-in source' },
+					condition: { field: 'id', value: '__never__' }
+				},
+				{
 					// 内容归属：评论所属内容的作者标识。由服务端在提交与回复时写入，
 					// 后台按它授予创作者审核权限（RBAC 条件 contentOwnerId = user.id）。
 					// 表单恒不展示，仅作为授权与过滤依据。
@@ -348,6 +361,7 @@ const plugin: Plugin = {
 					'status',
 					'official',
 					'authorName',
+					'visitorProvider',
 					'email',
 					'content',
 					'path',
@@ -361,9 +375,9 @@ const plugin: Plugin = {
 					'reportReasons',
 					'createdAt'
 				],
-			defaultSort: '-createdAt',
-			sortable: ['status', 'likes', 'reports', 'createdAt'],
-			searchable: ['authorName', 'content', 'path'],
+				defaultSort: '-createdAt',
+				sortable: ['status', 'likes', 'reports', 'createdAt'],
+				searchable: ['authorName', 'content', 'path'],
 				batchActions: [
 					{
 						action: 'approve',
@@ -400,7 +414,6 @@ const plugin: Plugin = {
 			info,
 			pagePaths
 		});
-	
 
 		// A3：待审回复的邮件补发——审核开启时新回复以 pending 落库，父作者不应
 		// 在回复公开前收到「收到新回复」。评论经任意路径转为 approved（管理端
@@ -409,29 +422,36 @@ const plugin: Plugin = {
 		// 只通知一次，反复上下线状态不再重复轰炸。
 		// 载荷仅含更新后的完整行；被删评论的 updated 不存在（已无行）。
 		ctx.event.on('collection:updated', (data: unknown) => {
-			const payload = data as { slug?: string; record?: Record<string, unknown> };
+			const payload = data as {
+				slug?: string;
+				record?: Record<string, unknown>;
+			};
 			if (payload?.slug !== 'comments') return;
 			const rec = payload.record;
 			if (!rec || rec.status !== 'approved' || rec.replyNotified === true) return;
 			if (!rec.parentId) return; // 顶层无补发语义
 			if (!d.cfg.bool('notifyReplies', true)) return;
 			void (async () => {
-				const parent = (await ctx.db.findById('comments', String(rec.parentId))) as
-					| CommentRow
-					| null;
+				const parent = (await ctx.db.findById(
+					'comments',
+					String(rec.parentId)
+				)) as CommentRow | null;
 				if (!parent) return;
-				const toEmail =
-					typeof parent.email === 'string' && parent.email ? parent.email : null;
+				const toEmail = typeof parent.email === 'string' && parent.email ? parent.email : null;
 				if (!toEmail) return;
 				// 自己回复自己的判定：回复行无提交者身份快照可比 userId——按父的
 				// userId 与回复 userId 比对（与 /submit 同语义；visitorId 为哈希
 				// 亦可直接比对）
 				const samePerson =
-					parent.userId && rec.userId ? parent.userId === rec.userId : parent.visitorId === rec.visitorId;
+					parent.userId && rec.userId
+						? parent.userId === rec.userId
+						: parent.visitorId === rec.visitorId;
 				if (samePerson) return;
 				// 先置标记后发信：并发双 updated 时以「至多一次」为准（发送失败
 				// 也认作已处理，不做重试轰炸）
-				await ctx.db.update('comments', String(rec.id), { replyNotified: true });
+				await ctx.db.update('comments', String(rec.id), {
+					replyNotified: true
+				});
 				d.sendReplyMail(toEmail, String(rec.content ?? ''), (rec.path as string | null) ?? null);
 			})().catch(() => {});
 		});
@@ -440,7 +460,6 @@ const plugin: Plugin = {
 		registerPublicApi(d);
 		registerInteractionApi(d);
 		registerAdminApi(d);
-	
 
 		// 文案注册（key → { locale }）：服务端 ctx.i18n.t() 取词，客户端组件
 		// 经 /api/v1/i18n/comments 端点取同一份（不占框架 messages/ 命名空间）
@@ -453,10 +472,7 @@ const plugin: Plugin = {
 		// （关闭 / 仅登录 / 仅精选）——「关闭某篇内容的评论」属创作者职责，
 		// 与站点级白名单（站长职责）分层。组件按 recordId 读写
 		// /admin/content-settings；create 模式无 id 不渲染（先保存再设置）。
-		ctx.slot.register(
-			'collection-form-fields-after',
-			'components/slot-comment-settings.svelte'
-		);
+		ctx.slot.register('collection-form-fields-after', 'components/slot-comment-settings.svelte');
 
 		// 管理端列表行操作插槽（方案 B）：后台评论列表每行出「回复」——弹层
 		// 直连 /admin/reply（免审 + official 徽章 + 父作者通知），挂楼三键从
@@ -528,7 +544,11 @@ const plugin: Plugin = {
 		let normalized = 0;
 		try {
 			for (let page = 1; ; page++) {
-				const res = await ctx.db.find('comments', { limit: SCAN, page, sort: 'createdAt' });
+				const res = await ctx.db.find('comments', {
+					limit: SCAN,
+					page,
+					sort: 'createdAt'
+				});
 				const rows = res.data as Array<Record<string, unknown>>;
 				for (const row of rows) {
 					const raw = row.path;

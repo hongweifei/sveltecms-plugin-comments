@@ -8,12 +8,42 @@ import { type RequestEvent } from '@sveltejs/kit';
 import { computeVisitorId } from '#lib/cms/stats.ts';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
-import { bindingFilter, bindingMatches, bindingOf, json, readJson, toPublic, type CommentRow, type ResolvedUser } from './helpers';
-import { clampPaging, isHoneypotFilled, matchBlacklist, normalizeId, validateSubmitInput } from './validate';
+import {
+	bindingFilter,
+	bindingMatches,
+	bindingOf,
+	json,
+	readJson,
+	toPublic,
+	type CommentRow,
+	type ResolvedUser
+} from './helpers';
+import {
+	clampPaging,
+	isHoneypotFilled,
+	matchBlacklist,
+	normalizeId,
+	validateSubmitInput
+} from './validate';
 import type { ApiDeps } from './deps';
 
 export function registerPublicApi(d: ApiDeps): void {
-	const { CHILD_CAP, COUNT_TTL_MS, blacklistService, bustCount, canPostOfficial, cfg, contentSettings, countCache, ctx, info, lastCommentAt, pagePaths, sendReplyMail, submitLimiter } = d;
+	const {
+		CHILD_CAP,
+		COUNT_TTL_MS,
+		blacklistService,
+		bustCount,
+		canPostOfficial,
+		cfg,
+		contentSettings,
+		countCache,
+		ctx,
+		info,
+		lastCommentAt,
+		pagePaths,
+		sendReplyMail,
+		submitLimiter
+	} = d;
 
 	/**
 	 * 作者标联查派生（不落列）：取本绑定内容记录的 userId——contentId 绑定按
@@ -21,15 +51,15 @@ export function registerPublicApi(d: ApiDeps): void {
 	 * 展示性且比对的是服务端落的 row.userId，无伪造面）；path 绑定经 pages 桥
 	 * 取页面记录 userId（pages 为声明只读表）。查不到 / 无类型 → null。
 	 */
-	async function threadAuthorId(
-		binding: { path: string | null; contentId: string | null; contentType: string | null }
-	): Promise<string | null> {
+	async function threadAuthorId(binding: {
+		path: string | null;
+		contentId: string | null;
+		contentType: string | null;
+	}): Promise<string | null> {
 		if (binding.contentId) {
 			if (!binding.contentType) return null;
 			const rec = (await ctx.content?.findById(binding.contentType, binding.contentId)) as
-				| Record<string, unknown>
-				| null
-				| undefined;
+				Record<string, unknown> | null | undefined;
 			const raw = rec?.userId;
 			return typeof raw === 'string' && raw ? raw : null;
 		}
@@ -78,18 +108,30 @@ export function registerPublicApi(d: ApiDeps): void {
 				);
 				if (!captchaOk) return json({ error: 'Captcha verification failed' }, 403);
 
-				// 登录用户身份取自账号（昵称 / 邮箱），只需填内容；游客必填邮箱
+				// 身份来源：CMS 登录用户取账号；微信访客取签名 cookie 解析出的
+				// locals.visitor（框架已验签，客户端传的昵称/邮箱不作数）；其余为游客。
+				// 以结构化断言读取而非依赖 App.Locals 声明：插件可在未含该字段的
+				// 旧版框架上运行，此时 visitor 恒为 undefined，退回匿名游客语义。
 				const user = event.locals.user;
+				const visitor = (
+					event.locals as {
+						visitor?: {
+							provider: 'wechat';
+							subject: string;
+							openid: string;
+							unionid?: string;
+							nickname: string;
+							avatar?: string;
+						};
+					}
+				).visitor;
 				const result = validateSubmitInput(parsed.body, {
-					skipIdentity: Boolean(user),
+					skipIdentity: Boolean(user || visitor),
 					// B2b：站点开启「游客邮箱可留空」时空值放行（登录路径本就 skipIdentity 不消费）
 					emailOptional: cfg.bool('guestEmailOptional', false)
 				});
 				if (!result.ok) {
-					return json(
-						{ error: 'Validation failed', fieldErrors: result.fieldErrors },
-						400
-					);
+					return json({ error: 'Validation failed', fieldErrors: result.fieldErrors }, 400);
 				}
 				const { content, authorName, email, website, path, contentId, contentType, parentId } =
 					result.data;
@@ -111,25 +153,27 @@ export function registerPublicApi(d: ApiDeps): void {
 				// 路径白名单）经 pagePaths 桥反查 pages 记录——与 /list 消费同口径，
 				// 保证「编辑页设了关闭」对两种绑定路径的提交都真实生效。
 				const csRecordId =
-					contentId ?? (path && cfg.hasEnabledPaths()
-						? await pagePaths.pathToRecordId(path)
-						: null);
+					contentId ??
+					(path && cfg.hasEnabledPaths() ? await pagePaths.pathToRecordId(path) : null);
 				if (csRecordId) {
 					// 带类型判别：contentId 绑定用服务端校验过的 resolvedType；path 桥命中
 					// 恒为 pages 记录。null 类型（历史设置行）经 _$or 兼容仍命中。
-					const cs = await contentSettings.get(
-						csRecordId,
-						contentId ? resolvedType : 'pages'
-					);
+					const cs = await contentSettings.get(csRecordId, contentId ? resolvedType : 'pages');
 					if (cs.closed) return json({ error: 'Comments are closed here' }, 403);
-					if (cs.requireLogin && !user) return json({ error: 'Login required' }, 403);
+					// 微信访客同样视为已登录身份（内容级「仅登录可评」对两类身份都放行）
+					if (cs.requireLogin && !user && !visitor) {
+						return json({ error: 'Login required' }, 403);
+					}
 				}
 
 				// 字数上限（0 = 不限）
 				const maxLength = cfg.num('maxLength', 500);
 				if (maxLength > 0 && String(content).length > maxLength) {
 					return json(
-						{ error: 'Validation failed', fieldErrors: { content: `max ${maxLength}` } },
+						{
+							error: 'Validation failed',
+							fieldErrors: { content: `max ${maxLength}` }
+						},
 						400
 					);
 				}
@@ -148,17 +192,22 @@ export function registerPublicApi(d: ApiDeps): void {
 						!parent ||
 						parent.status !== 'approved' ||
 						// 挂楼带类型判别：跨集合同 id 的线程不互挂（父行历史空类型视为任意）
-						!bindingMatches(parent, { path, contentId, contentType: resolvedType })
+						!bindingMatches(parent, {
+							path,
+							contentId,
+							contentType: resolvedType
+						})
 					) {
 						return json(
-							{ error: 'Validation failed', fieldErrors: { parentId: 'invalid' } },
+							{
+								error: 'Validation failed',
+								fieldErrors: { parentId: 'invalid' }
+							},
 							400
 						);
 					}
 					rootId =
-						typeof parent.rootId === 'string' && parent.rootId
-							? parent.rootId
-							: String(parent.id);
+						typeof parent.rootId === 'string' && parent.rootId ? parent.rootId : String(parent.id);
 				}
 
 				// 最小评论间隔（0 = 不限）：抑制同一访客连发
@@ -199,13 +248,19 @@ export function registerPublicApi(d: ApiDeps): void {
 						: 'pending';
 				const record = await ctx.db.create('comments', {
 					content,
-					authorName: authorName || user?.name || null,
+					// 身份优先级：CMS 账号 > 微信访客 > 表单填写。微信昵称来自签名
+					// cookie，客户端提交的 authorName 不参与，避免冒名。
+					authorName: user?.name || visitor?.nickname || authorName || null,
 					// 登录用户：邮箱取账号（gravatar / 存证），主页不信客户端
-					email: user ? user.email || null : email,
-					// 头像不再快照：列表时按 user 表实时反查（manifest 声明
-					// 'user' 系统表），账号换头像即刻生效
-					website: user ? null : website,
+					email: user ? user.email || null : visitor ? null : email,
+					// 头像：登录用户不落快照（列表按 user 表实时反查）；微信访客落
+					// 一次头像快照，列表无邮箱可派生时用它展示
+					...(visitor?.avatar ? { avatar: visitor.avatar } : {}),
+					website: user || visitor ? null : website,
 					userId: user?.id ?? null,
+					// 访客登录来源（当前仅 wechat）：前台据此展示「微信」徽章；
+					// openid / unionid 不落评论表，去重仍用 visitorId 哈希
+					visitorProvider: visitor ? visitor.provider : null,
 					status,
 					path,
 					contentId,
@@ -234,10 +289,8 @@ export function registerPublicApi(d: ApiDeps): void {
 				// status→approved）时补发，replyNotified 标记幂等。自己回复自己
 				// 不发。即时发送也置 replyNotified，防后续再审核重复通知。
 				if (parent && !hit && status === 'approved' && cfg.bool('notifyReplies', true)) {
-					const toEmail =
-						typeof parent.email === 'string' && parent.email ? parent.email : null;
-					const parentVisitor =
-						typeof parent.visitorId === 'string' ? parent.visitorId : null;
+					const toEmail = typeof parent.email === 'string' && parent.email ? parent.email : null;
+					const parentVisitor = typeof parent.visitorId === 'string' ? parent.visitorId : null;
 					const samePerson = user ? parent.userId === user.id : parentVisitor === visitorId;
 					if (toEmail && !samePerson) {
 						await ctx.db.update('comments', id, { replyNotified: true });
@@ -282,10 +335,7 @@ export function registerPublicApi(d: ApiDeps): void {
 				// 登录用户的头像 / 昵称不经查库——locals.user 就在手上，直接解析。
 				const userBy = user
 					? new Map<string, ResolvedUser>([
-							[
-								String(user.id),
-								{ name: user.name ?? null, avatar: userAvatarUrl(user) }
-							]
+							[String(user.id), { name: user.name ?? null, avatar: userAvatarUrl(user) }]
 						])
 					: undefined;
 				return json({
@@ -304,7 +354,6 @@ export function registerPublicApi(d: ApiDeps): void {
 			}
 		}
 	});
-
 
 	// 已审核评论列表：按顶层评论（rootId 为 null）分页，顶层之下全部后代
 	// 经 rootId 一次带出（children 平铺数组，前台按 parentId 递归组装树）。
@@ -341,10 +390,7 @@ export function registerPublicApi(d: ApiDeps): void {
 			// 精选模式（公众号式）：该内容开启后，公开列表仅展示精选评论——
 			// 未精选的已审核评论对所有人隐藏（创作者在后台勾选精选后现身）
 			const contentSettingsRow = csRecordId
-				? await contentSettings.get(
-						csRecordId,
-						binding.contentId ? binding.contentType : 'pages'
-					)
+				? await contentSettings.get(csRecordId, binding.contentId ? binding.contentType : 'pages')
 				: null;
 			const approvedFilter: Record<string, unknown> = {
 				...baseFilter,
@@ -376,9 +422,10 @@ export function registerPublicApi(d: ApiDeps): void {
 				...bindingFilter(binding)
 			};
 			mineFilter[user ? 'userId' : 'visitorId'] = user ? user.id : visitorId;
-			const own = page === 1
-				? await ctx.db.find('comments', { filter: mineFilter, limit: 50 })
-				: { data: [] as Record<string, unknown>[] };
+			const own =
+				page === 1
+					? await ctx.db.find('comments', { filter: mineFilter, limit: 50 })
+					: { data: [] as Record<string, unknown>[] };
 			const ownRows = own.data as CommentRow[];
 
 			const topRows = [
@@ -428,9 +475,7 @@ export function registerPublicApi(d: ApiDeps): void {
 						if (full > loaded) truncatedThreads.push({ rootId: rid, loaded });
 					}
 				}
-				const ownChildRows = ownRows.filter(
-					(r) => r.rootId && topIds.includes(String(r.rootId))
-				);
+				const ownChildRows = ownRows.filter((r) => r.rootId && topIds.includes(String(r.rootId)));
 				childRows.push(...ownChildRows);
 			}
 			childRows.sort((a, b) => (String(a.createdAt) > String(b.createdAt) ? 1 : -1));
@@ -468,8 +513,18 @@ export function registerPublicApi(d: ApiDeps): void {
 			// 记录 userId 即派生「作者」徽章——不落列，内容转作者后徽章自动跟变。
 			const authorId = await threadAuthorId(binding);
 			return json({
-				data: topRows.map((row) => toPublic(row, isMine(row), userBy, { hideEnv, contentAuthorId: authorId })),
-				children: childRows.map((row) => toPublic(row, isMine(row), userBy, { hideEnv, contentAuthorId: authorId })),
+				data: topRows.map((row) =>
+					toPublic(row, isMine(row), userBy, {
+						hideEnv,
+						contentAuthorId: authorId
+					})
+				),
+				children: childRows.map((row) =>
+					toPublic(row, isMine(row), userBy, {
+						hideEnv,
+						contentAuthorId: authorId
+					})
+				),
 				// 点赞 toggle：本页中当前身份已赞的评论 id（前端渲染实心红心，刷新不丢）
 				likedIds,
 				// D1：单线程后代超 CHILD_CAP 被截断的线程 rootId 列表——前端据此
@@ -479,10 +534,7 @@ export function registerPublicApi(d: ApiDeps): void {
 				// 取查询串（主题模板注入的集合 slug，客户端值不可信——仅作 UI 提示，
 				// /submit 会经内容引擎归属校验后同样复核）；字数上限与最小间隔供
 				// 前端即时提示。
-				enabled: cfg.commentsEnabledFor(
-					binding.path,
-					event.url.searchParams.get('contentType')
-				),
+				enabled: cfg.commentsEnabledFor(binding.path, event.url.searchParams.get('contentType')),
 				// 内容级设置（创作者控制）：csRecordId 覆盖 contentId 绑定与
 				// path 桥接命中的两种情形；前端据此隐藏表单（closed）或提示
 				// 登录（requireLogin），不必等提交吃 403
@@ -508,22 +560,16 @@ export function registerPublicApi(d: ApiDeps): void {
 				// 登录态下发：本应用 better-auth 端点不走 HTTP（/api/auth/* 410），
 				// 组件无法自行探测会话——viewer 非空即登录，前端隐藏身份输入，
 				// /submit 服务端按会话落身份（与此处同源，伪造无意义）
-				viewer: event.locals.user
-					? { name: event.locals.user.name ?? '' }
-					: null,
+				viewer: event.locals.user ? { name: event.locals.user.name ?? '' } : null,
 				maxLength: cfg.num('maxLength', 500),
 				minInterval: cfg.num('minInterval', 0),
 				page,
 				pageSize,
-				total:
-					typeof approved.meta.total === 'number'
-						? approved.meta.total
-						: approved.data.length,
+				total: typeof approved.meta.total === 'number' ? approved.meta.total : approved.data.length,
 				hasMore: page * pageSize < (approved.meta.total ?? 0)
 			});
 		}
 	});
-
 
 	// D1：单线程后代续拉——/list 的 CHILD_CAP 截断后，前端对 truncatedThreads
 	// 里的线程出「查看更多回复」。批量按 createdAt 升序全局取最旧 CHILD_CAP 条，
@@ -591,7 +637,12 @@ export function registerPublicApi(d: ApiDeps): void {
 			const authorId = await threadAuthorId(binding);
 			return json({
 				rootId,
-				data: slice.map((row) => toPublic(row, isMine(row), userBy, { hideEnv, contentAuthorId: authorId })),
+				data: slice.map((row) =>
+					toPublic(row, isMine(row), userBy, {
+						hideEnv,
+						contentAuthorId: authorId
+					})
+				),
 				likedIds,
 				after,
 				limit,
@@ -601,7 +652,6 @@ export function registerPublicApi(d: ApiDeps): void {
 			});
 		}
 	});
-
 
 	// 已审核评论计数（页面「N 条评论」），同样支持双绑定。60s 内存缓存
 	// （进程内评论变更即失效）——页面头部高频读，不值得每次打库。
@@ -623,10 +673,7 @@ export function registerPublicApi(d: ApiDeps): void {
 					? await pagePaths.pathToRecordId(binding.path)
 					: null);
 			const cs = csRecordId
-				? await contentSettings.get(
-						csRecordId,
-						binding.contentId ? binding.contentType : 'pages'
-					)
+				? await contentSettings.get(csRecordId, binding.contentId ? binding.contentType : 'pages')
 				: null;
 			const featuredOnly = cs?.featuredOnly ?? false;
 			// 缓存键含类型判别：同 contentId 不同集合的计数互不串（与查询口径一致）
@@ -643,9 +690,12 @@ export function registerPublicApi(d: ApiDeps): void {
 			};
 			if (featuredOnly) filter.featured = true;
 			const page = await ctx.db.find('comments', { filter, limit: 1 });
-			const count =
-				typeof page.meta.total === 'number' ? page.meta.total : page.data.length;
-			countCache.set(cacheKey, { value: count, expires: Date.now() + COUNT_TTL_MS });
+			const count = typeof page.meta.total === 'number' ? page.meta.total : page.data.length;
+			countCache.set(cacheKey, {
+				value: count,
+				expires: Date.now() + COUNT_TTL_MS
+			});
 			return json({ count });
 		}
-	});}
+	});
+}

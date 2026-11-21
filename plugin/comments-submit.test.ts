@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { BASE, UA, EMAIL, setup, getEndpoint, mockEvent, submitBody, commentRow } from './comments-test-utils';
+import {
+	BASE,
+	UA,
+	EMAIL,
+	setup,
+	getEndpoint,
+	mockEvent,
+	submitBody,
+	commentRow
+} from './comments-test-utils';
 import { gravatarHash } from './client-info';
 import { UAParser } from 'ua-parser-js';
 import { runWithRequestContext } from '#lib/common/server/request-context.ts';
@@ -11,14 +20,20 @@ describe('POST /submit', () => {
 		const built = await setup(
 			[],
 			{},
-			{ findById: async (c, id) => (c === 'posts' && id === 'post-9' ? { id } : null) }
+			{
+				findById: async (c, id) => (c === 'posts' && id === 'post-9' ? { id } : null)
+			}
 		);
 		const submit = getEndpoint(built, 'POST', '/submit');
 		const res = await submit.handler(
 			mockEvent({
 				method: 'POST',
 				url: `${BASE}/submit`,
-				body: submitBody({ contentId: 'post-9', path: null, contentType: 'posts' })
+				body: submitBody({
+					contentId: 'post-9',
+					path: null,
+					contentType: 'posts'
+				})
 			})
 		);
 		expect(res.status).toBe(200);
@@ -28,11 +43,7 @@ describe('POST /submit', () => {
 	});
 
 	it('contentId 谎报类型（反查不中）→ 落 null 而非客户端原值', async () => {
-		const built = await setup(
-			[],
-			{},
-			{ findById: async () => null }
-		);
+		const built = await setup([], {}, { findById: async () => null });
 		const submit = getEndpoint(built, 'POST', '/submit');
 		// 双键提交（前端同款载荷）：门禁经 path=/a 命中白名单放行，但落库类型
 		// 取 resolve 校验结果——反查不中即 null，绝不落客户端声明的 'posts'
@@ -40,7 +51,11 @@ describe('POST /submit', () => {
 			mockEvent({
 				method: 'POST',
 				url: `${BASE}/submit`,
-				body: submitBody({ contentId: 'ghost-1', path: '/a', contentType: 'posts' })
+				body: submitBody({
+					contentId: 'ghost-1',
+					path: '/a',
+					contentType: 'posts'
+				})
 			})
 		);
 		expect(res.status).toBe(200);
@@ -91,7 +106,10 @@ describe('POST /submit', () => {
 			})
 		);
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { success: boolean; comment: { status: string; rootId: null } };
+		const body = (await res.json()) as {
+			success: boolean;
+			comment: { status: string; rootId: null };
+		};
 		expect(body.success).toBe(true);
 		expect(body.comment.status).toBe('pending');
 		expect(body.comment.rootId).toBeNull();
@@ -121,7 +139,9 @@ describe('POST /submit', () => {
 			mockEvent({
 				method: 'POST',
 				url: `${BASE}/submit`,
-				body: submitBody({ path: '/article/%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8' })
+				body: submitBody({
+					path: '/article/%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8'
+				})
 			})
 		);
 		expect(res.status).toBe(200);
@@ -146,9 +166,7 @@ describe('POST /submit', () => {
 		// 与 /list 单条同构：头像由服务端派生。此前 submit 只回传
 		// id/createdAt/status/rootId，前端本地组装时 avatar 恒为 null →
 		// 「刚发出显示字母色块，刷新后才显示头像」。
-		expect(c.avatar).toBe(
-			`https://cravatar.cn/avatar/${gravatarHash(EMAIL)}?d=404&s=72`
-		);
+		expect(c.avatar).toBe(`https://cravatar.cn/avatar/${gravatarHash(EMAIL)}?d=404&s=72`);
 		expect(c.status).toBe('pending');
 		expect(c.pending).toBe(true);
 		expect(c.mine).toBe(true);
@@ -161,6 +179,68 @@ describe('POST /submit', () => {
 		expect('userId' in c).toBe(false);
 	});
 
+	it('微信访客提交：昵称取签名身份、无需邮箱，落 wechat 标记与头像快照', async () => {
+		const built = await setup();
+		const submit = getEndpoint(built, 'POST', '/submit');
+
+		const res = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				visitor: {
+					provider: 'wechat',
+					subject: 'union-1',
+					openid: 'openid-1',
+					nickname: '微信小明',
+					avatar: 'https://thirdwx.qlogo.cn/avatar'
+				},
+				// 模拟前端：身份三字段隐藏后不发送 email，只留 content + 绑定
+				body: { content: '微信发言', path: '/a' }
+			})
+		);
+		expect(res.status).toBe(200);
+
+		const created = built.dbCreate.mock.calls[0][1] as Record<string, unknown>;
+		expect(created.authorName).toBe('微信小明');
+		expect(created.email).toBeNull();
+		expect(created.website).toBeNull();
+		expect(created.userId).toBeNull();
+		expect(created.visitorProvider).toBe('wechat');
+		expect(created.avatar).toBe('https://thirdwx.qlogo.cn/avatar');
+
+		const body = (await res.json()) as { comment: Record<string, unknown> };
+		expect(body.comment.authorName).toBe('微信小明');
+		expect(body.comment.visitorProvider).toBe('wechat');
+		expect(body.comment.avatar).toBe('https://thirdwx.qlogo.cn/avatar');
+	});
+
+	it('微信访客伪造昵称无效：服务端只认 locals.visitor', async () => {
+		const built = await setup();
+		const submit = getEndpoint(built, 'POST', '/submit');
+
+		await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				visitor: {
+					provider: 'wechat',
+					subject: 'union-2',
+					openid: 'openid-2',
+					nickname: '真实昵称'
+				},
+				body: submitBody({
+					content: '冒名',
+					authorName: '管理员',
+					email: 'fake@example.com'
+				})
+			})
+		);
+
+		const created = built.dbCreate.mock.calls[0][1] as Record<string, unknown>;
+		expect(created.authorName).toBe('真实昵称');
+		expect(created.email).toBeNull();
+	});
+
 	it('登录用户提交：头像用 locals.user 实时解析，且不再快照 avatar 列', async () => {
 		const built = await setup();
 		const submit = getEndpoint(built, 'POST', '/submit');
@@ -169,12 +249,18 @@ describe('POST /submit', () => {
 			mockEvent({
 				method: 'POST',
 				url: `${BASE}/submit`,
-				user: { id: 'u-9', name: '站长', image: 'https://cdn.example.com/admin.png' },
+				user: {
+					id: 'u-9',
+					name: '站长',
+					image: 'https://cdn.example.com/admin.png'
+				},
 				body: { content: '登录发言', path: '/a' }
 			})
 		);
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { comment: { avatar: string | null; mine: boolean } };
+		const body = (await res.json()) as {
+			comment: { avatar: string | null; mine: boolean };
+		};
 		expect(body.comment.avatar).toBe('https://cdn.example.com/admin.png');
 		expect(body.comment.mine).toBe(true);
 
@@ -218,7 +304,12 @@ describe('POST /submit', () => {
 
 		// Win11：platform-version 主版本 ≥13（框架 parseOS 原样输出，含版本段）
 		await runWithRequestContext(
-			{ ip: '127.0.0.1', ua: 'vitest', chPlatform: 'Windows', chPlatformVersion: '13.0.0' },
+			{
+				ip: '127.0.0.1',
+				ua: 'vitest',
+				chPlatform: 'Windows',
+				chPlatformVersion: '13.0.0'
+			},
 			submitOnce
 		);
 		const win11 = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
@@ -226,7 +317,12 @@ describe('POST /submit', () => {
 
 		// Win10：主版本 ≤1
 		await runWithRequestContext(
-			{ ip: '127.0.0.1', ua: 'vitest', chPlatform: 'Windows', chPlatformVersion: '1.0.0' },
+			{
+				ip: '127.0.0.1',
+				ua: 'vitest',
+				chPlatform: 'Windows',
+				chPlatformVersion: '1.0.0'
+			},
 			submitOnce
 		);
 		const win10 = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
@@ -238,28 +334,50 @@ describe('POST /submit', () => {
 		const submit = getEndpoint(built, 'POST', '/submit');
 
 		const noEmail = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: { content: 'hi', path: '/a' } })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: { content: 'hi', path: '/a' }
+			})
 		);
 		expect(noEmail.status).toBe(400);
-		const noEmailBody = (await noEmail.json()) as { fieldErrors: Record<string, string> };
+		const noEmailBody = (await noEmail.json()) as {
+			fieldErrors: Record<string, string>;
+		};
 		expect(noEmailBody.fieldErrors.email).toBe('required');
 
 		const badEmail = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ email: 'not-an-email' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ email: 'not-an-email' })
+			})
 		);
 		expect(badEmail.status).toBe(400);
-		const badEmailBody = (await badEmail.json()) as { fieldErrors: Record<string, string> };
+		const badEmailBody = (await badEmail.json()) as {
+			fieldErrors: Record<string, string>;
+		};
 		expect(badEmailBody.fieldErrors.email).toBe('invalid');
 
 		const badSite = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ website: 'ftp://x' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ website: 'ftp://x' })
+			})
 		);
 		expect(badSite.status).toBe(400);
-		const badSiteBody = (await badSite.json()) as { fieldErrors: Record<string, string> };
+		const badSiteBody = (await badSite.json()) as {
+			fieldErrors: Record<string, string>;
+		};
 		expect(badSiteBody.fieldErrors.website).toBe('invalid');
 
 		const ok = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ website: 'example.com/blog' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ website: 'example.com/blog' })
+			})
 		);
 		expect(ok.status).toBe(200);
 		const created = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
@@ -270,7 +388,9 @@ describe('POST /submit', () => {
 		const built = await setup(
 			[],
 			{},
-			{ findById: async (c, id) => (c === 'posts' && id === 'content-1' ? { id } : null) }
+			{
+				findById: async (c, id) => (c === 'posts' && id === 'content-1' ? { id } : null)
+			}
 		);
 		const submit = getEndpoint(built, 'POST', '/submit');
 
@@ -278,7 +398,11 @@ describe('POST /submit', () => {
 			mockEvent({
 				method: 'POST',
 				url: `${BASE}/submit`,
-				body: submitBody({ contentId: 'content-1', path: undefined, contentType: 'posts' })
+				body: submitBody({
+					contentId: 'content-1',
+					path: undefined,
+					contentType: 'posts'
+				})
 			})
 		);
 		expect(res.status).toBe(200);
@@ -292,7 +416,11 @@ describe('POST /submit', () => {
 		const submit = getEndpoint(built, 'POST', '/submit');
 
 		const res = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: { content: 'hi', email: EMAIL } })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: { content: 'hi', email: EMAIL }
+			})
 		);
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as { fieldErrors: Record<string, string> };
@@ -302,13 +430,22 @@ describe('POST /submit', () => {
 	it('locks rootId to the thread root for arbitrarily deep replies', async () => {
 		const built = await setup([
 			commentRow({ id: 'root-1', path: '/a' }),
-			commentRow({ id: 'child-1', path: '/a', parentId: 'root-1', rootId: 'root-1' })
+			commentRow({
+				id: 'child-1',
+				path: '/a',
+				parentId: 'root-1',
+				rootId: 'root-1'
+			})
 		]);
 		const submit = getEndpoint(built, 'POST', '/submit');
 
 		// 回复根评论 → rootId = 根 id
 		const toRoot = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ parentId: 'root-1' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ parentId: 'root-1' })
+			})
 		);
 		expect(toRoot.status).toBe(200);
 		const first = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
@@ -317,7 +454,11 @@ describe('POST /submit', () => {
 
 		// 回复「回复的回复」→ rootId 仍锁定根评论（无限嵌套只挂同一根）
 		const toChild = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ parentId: 'child-1' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ parentId: 'child-1' })
+			})
 		);
 		expect(toChild.status).toBe(200);
 		const second = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
@@ -327,19 +468,35 @@ describe('POST /submit', () => {
 
 	it('silently marks blacklist hits as spam while responding success', async () => {
 		const built = await setup([
-			{ _collection: 'plugin_comments_settings', id: 's-1', key: 'blacklist', value: '赌博, 广告' }
+			{
+				_collection: 'plugin_comments_settings',
+				id: 's-1',
+				key: 'blacklist',
+				value: '赌博, 广告'
+			}
 		]);
 		const submit = getEndpoint(built, 'POST', '/submit');
 
 		const clean = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ content: '正常内容' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ content: '正常内容' })
+			})
 		);
 		const hit = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ content: '最好的赌博网站' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ content: '最好的赌博网站' })
+			})
 		);
 		expect((await clean.json()) as { comment: { status: string } }).toBeTruthy();
 
-		const body = (await hit.json()) as { success: boolean; comment: { status: string } };
+		const body = (await hit.json()) as {
+			success: boolean;
+			comment: { status: string };
+		};
 		expect(body.success).toBe(true);
 		expect(body.comment.status).toBe('spam');
 		const created = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
@@ -376,12 +533,20 @@ describe('POST /submit', () => {
 
 		for (let i = 0; i < 5; i++) {
 			const res = await submit.handler(
-				mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ content: `hi ${i}` }) })
+				mockEvent({
+					method: 'POST',
+					url: `${BASE}/submit`,
+					body: submitBody({ content: `hi ${i}` })
+				})
 			);
 			expect(res.status).toBe(200);
 		}
 		const sixth = await submit.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/submit`, body: submitBody({ content: 'hi 6' }) })
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ content: 'hi 6' })
+			})
 		);
 		expect(sixth.status).toBe(429);
 	});
@@ -405,10 +570,9 @@ describe('POST /submit 官方标（官方身份门禁 + 免审）', () => {
 	const creatorUser = { id: 'u-creator', name: '作者号', role: 'creator' };
 
 	it('站方成员勾选 → official:true 且免审直发 approved（即便审核开启）', async () => {
-		const built = await setup(
-			[roleRow('admin', adminRole), roleRow('user', userRole)],
-			{ moderation: true }
-		);
+		const built = await setup([roleRow('admin', adminRole), roleRow('user', userRole)], {
+			moderation: true
+		});
 		const submit = getEndpoint(built, 'POST', '/submit');
 		const res = await submit.handler(
 			mockEvent({
@@ -426,10 +590,9 @@ describe('POST /submit 官方标（官方身份门禁 + 免审）', () => {
 	});
 
 	it('非官方身份即便伪造 official:true → 强制 false、正常走审核', async () => {
-		const built = await setup(
-			[roleRow('admin', adminRole), roleRow('user', userRole)],
-			{ moderation: true }
-		);
+		const built = await setup([roleRow('admin', adminRole), roleRow('user', userRole)], {
+			moderation: true
+		});
 		const submit = getEndpoint(built, 'POST', '/submit');
 		const res = await submit.handler(
 			mockEvent({
@@ -446,10 +609,9 @@ describe('POST /submit 官方标（官方身份门禁 + 免审）', () => {
 	});
 
 	it('创作者角色（有 appAccess、无 adminAccess）不具官方身份 → 勾选也强制 false', async () => {
-		const built = await setup(
-			[roleRow('admin', adminRole), roleRow('creator', creatorRole)],
-			{ moderation: true }
-		);
+		const built = await setup([roleRow('admin', adminRole), roleRow('creator', creatorRole)], {
+			moderation: true
+		});
 		const submit = getEndpoint(built, 'POST', '/submit');
 		const res = await submit.handler(
 			mockEvent({
@@ -466,10 +628,10 @@ describe('POST /submit 官方标（官方身份门禁 + 免审）', () => {
 	});
 
 	it('officialRoles 白名单内的角色 → 可发官方回复且免审', async () => {
-		const built = await setup(
-			[roleRow('admin', adminRole), roleRow('creator', creatorRole)],
-			{ moderation: true, officialRoles: ['creator'] }
-		);
+		const built = await setup([roleRow('admin', adminRole), roleRow('creator', creatorRole)], {
+			moderation: true,
+			officialRoles: ['creator']
+		});
 		const submit = getEndpoint(built, 'POST', '/submit');
 		const res = await submit.handler(
 			mockEvent({
@@ -523,20 +685,26 @@ describe('POST /submit 官方标（官方身份门禁 + 免审）', () => {
 			})
 		);
 		expect(((await asCreator.json()) as { canOfficial: boolean }).canOfficial).toBe(false);
-		const asGuest = await list.handler(
-			mockEvent({ method: 'GET', url: `${BASE}/list?path=%2Fa` })
-		);
+		const asGuest = await list.handler(mockEvent({ method: 'GET', url: `${BASE}/list?path=%2Fa` }));
 		expect(((await asGuest.json()) as { canOfficial: boolean }).canOfficial).toBe(false);
 	});
 
 	it('/list canOfficial 尊重 officialRoles 白名单', async () => {
 		const built = await setup(
-			[roleRow('admin', adminRole), roleRow('creator', creatorRole), commentRow({ id: 'c1', path: '/a' })],
+			[
+				roleRow('admin', adminRole),
+				roleRow('creator', creatorRole),
+				commentRow({ id: 'c1', path: '/a' })
+			],
 			{ officialRoles: ['creator'] }
 		);
 		const list = getEndpoint(built, 'GET', '/list');
 		const res = await list.handler(
-			mockEvent({ method: 'GET', url: `${BASE}/list?path=%2Fa`, user: creatorUser })
+			mockEvent({
+				method: 'GET',
+				url: `${BASE}/list?path=%2Fa`,
+				user: creatorUser
+			})
 		);
 		expect(((await res.json()) as { canOfficial: boolean }).canOfficial).toBe(true);
 	});

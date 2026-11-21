@@ -19,6 +19,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 - **双键绑定**：每条评论绑定到「页面路径 `path`」或「内容项 `contentId`（+ `contentType` 判别集合）」至少其一，两条链路在提交/列表/计数全链路等价。前台优先按内容项 id 绑定（主题注入的 `window.__CMS_PAGE__`），无 id 时回落 URL 路径。`path` 存**可读原文**：地址栏里的中文段是 percent-encoding（`/article/%E7%BD%91…`），服务端归一还原为 `/article/网络安全`，后台列表、路径白名单与 pages slug 都按原文比对。
 - **无限嵌套回复**：`parentId` 指向任意已审核父评论；`rootId` 恒指向所在根评论。列表按顶层分页、后代按 `rootId` 一次带出，前台平铺在根评论下一层（回复内容带「回复 @目标」前缀，点击跳转定位），避免层层缩进。
 - **访客身份**：游客用昵称（可选）/ 邮箱（默认必填，仅存储）/ 主页（可选）；提交者指纹 `visitorId` = SHA-256(当日盐 + IP + UA)，**每日轮换**（当日内的「本人待审可见」、点赞去重与限频按它归人，跨日视为新访客——登录用户不受此限，恒按 `userId` 归身份），昵称/头像实时反查 user 表（manifest 声明只读 `user`），账号改名换头像即刻生效。
+- **微信访客**：站点配置公众号凭据后，表单出现「微信登录后评论」。登录走框架 `/oauth/wechat/start`，回调写签名 cookie；提交时服务端从 `event.locals.visitor` 取昵称与头像，忽略客户端填写的身份字段，落 `visitor_provider = 'wechat'` 并给评论加「微信」徽章。openid / unionid 不落评论表，去重仍按 `visitorId`。
 - **环境信息**：服务端从 UA 解析系统/浏览器、从 IP 异步解析归属地（best-effort，失败留空；内网地址标注「内网」），落库前归一成「国家·省份·城市·运营商」展示文本（离线库原始记录里的分隔符、占位符与国家代码不上屏）。
 
 ## 评论状态机
@@ -39,19 +40,19 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 
 后台「插件管理 → comments → 配置」。核心职责边界：**站点级是纯白名单**（只配置"哪里开"），"关闭"动作归创作者内容级设置。
 
-| 键 | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `moderation` | boolean | 开 | 评论审核；关闭则发布即公开（fail-safe：缺省按开） |
-| `allowGuest` | boolean | 开 | 允许游客评论；关闭则仅登录用户可评 |
-| `guestEmailOptional` | boolean | 关 | 开：游客邮箱可留空（表单去必填；关：邮箱必填，作 gravatar 头像源） |
-| `hideEnv` | boolean | 关 | 开：前台隐藏系统/浏览器/IP 属地，仅管理端可见 |
-| `maxLength` | number | 500 | 单条最大字数（0 = 不限；另有服务端硬上限 2000 兜底） |
-| `minInterval` | number | 0 | 同一访客两次提交的最小间隔秒数（0 = 不限；超限 429 + Retry-After） |
-| `notifyAuthor` | boolean | 开 | 新评论**站内**通知内容作者（落具体内容项时定向创作者；非本人评论才发） |
-| `notifyReplies` | boolean | 开 | 收到回复**邮件**通知被回复者（需 SMTP）；审核开启时延迟到回复**通过后**补发，且同一回复只通知一次 |
-| `enabledPaths` | multiselect | 空 | 开启评论的页面路径白名单（可手输任意路径） |
-| `enabledTypes` | multiselect | 空 | 开启评论的内容类型（集合 slug）白名单 |
-| `officialRoles` | multiselect | 空 | 可发官方回复的角色名白名单（手输角色名；空 = 仅 `adminAccess` 角色）。`appAccess` 代表后台准入，不构成官方身份 |
+| 键                   | 类型        | 默认 | 说明                                                                                                           |
+| -------------------- | ----------- | ---- | -------------------------------------------------------------------------------------------------------------- |
+| `moderation`         | boolean     | 开   | 评论审核；关闭则发布即公开（fail-safe：缺省按开）                                                              |
+| `allowGuest`         | boolean     | 开   | 允许游客评论；关闭则仅登录用户可评                                                                             |
+| `guestEmailOptional` | boolean     | 关   | 开：游客邮箱可留空（表单去必填；关：邮箱必填，作 gravatar 头像源）                                             |
+| `hideEnv`            | boolean     | 关   | 开：前台隐藏系统/浏览器/IP 属地，仅管理端可见                                                                  |
+| `maxLength`          | number      | 500  | 单条最大字数（0 = 不限；另有服务端硬上限 2000 兜底）                                                           |
+| `minInterval`        | number      | 0    | 同一访客两次提交的最小间隔秒数（0 = 不限；超限 429 + Retry-After）                                             |
+| `notifyAuthor`       | boolean     | 开   | 新评论**站内**通知内容作者（落具体内容项时定向创作者；非本人评论才发）                                         |
+| `notifyReplies`      | boolean     | 开   | 收到回复**邮件**通知被回复者（需 SMTP）；审核开启时延迟到回复**通过后**补发，且同一回复只通知一次              |
+| `enabledPaths`       | multiselect | 空   | 开启评论的页面路径白名单（可手输任意路径）                                                                     |
+| `enabledTypes`       | multiselect | 空   | 开启评论的内容类型（集合 slug）白名单                                                                          |
+| `officialRoles`      | multiselect | 空   | 可发官方回复的角色名白名单（手输角色名；空 = 仅 `adminAccess` 角色）。`appAccess` 代表后台准入，不构成官方身份 |
 
 两个白名单留空 = 全站不开启（插件装上后默认静默）。值以字符串落库，布尔两种形态都认。
 
@@ -59,17 +60,18 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 
 内容编辑表单底部（`collection-form-fields-after` 插槽）——仅在站点白名单命中的集合上出现：
 
-| 设置 | 语义 |
-|---|---|
-| 关闭评论 | 该内容不显示评论区（站点开着也可以单点关） |
-| 仅登录可评 | 游客见「登录后可评论」提示 |
-| 仅展示精选 | 公众号式：人工精选的已审核评论才对外可见 |
+| 设置       | 语义                                       |
+| ---------- | ------------------------------------------ |
+| 关闭评论   | 该内容不显示评论区（站点开着也可以单点关） |
+| 仅登录可评 | 游客见「登录后可评论」提示                 |
+| 仅展示精选 | 公众号式：人工精选的已审核评论才对外可见   |
 
 存 `plugin_comments_content_settings`（contentId+contentType 归属，path 绑定经 pages 记录桥反查，两视图等价消费）。
 
 ## 前台能力
 
 - 发表评论（游客三字段 localStorage 记住；登录用户只见正文框——身份由服务端会话判定，`/list` 响应 `viewer` 字段下发登录态）
+- 微信登录入口：框架未配置公众号凭据时不显示；已登录显示「以 {昵称} 身份评论」与退出链接，身份三字段隐藏，昵称与头像由签名 cookie 认定
 - 无限嵌套回复、@目标点击跳转（平滑滚动 + 落点高亮）、回复前缀
 - 分页「加载更多」；顶层页后代按全局上限 500 条带出（防读放大护栏），被截断的线程标注给前端出「查看更多回复」，经 `/children` 精确续拉不重不漏
 - 点赞（幂等，按 visitor/user 去重，刷新后红心持久）
@@ -83,7 +85,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 ## 管理端能力
 
 - **审核工作台**：通用内容列表（`comments` 集合）——状态/官方/作者/昵称/邮箱/内容/路径/内容类型/系统/浏览器/属地列，`status/likes/reports/createdAt` 可排序，内容搜索；批量通过/标垃圾/回待审；行展开可直接回复（免审+官方标）
-- **字段编辑边界**：编辑表单只渲染人工维护的字段（正文、昵称、邮箱、主页、状态、官方标、举报理由）；绑定键（页面路径/内容类型/内容项 ID）与设备环境（系统/浏览器/属地）、内容归属由服务端托管——列表可见，编辑表单不出现，保存时保持原值。新建评论时填写绑定键。
+- **字段编辑边界**：编辑表单只渲染人工维护的字段（正文、昵称、邮箱、主页、状态、官方标、举报理由）；绑定键（页面路径/内容类型/内容项 ID）与设备环境（系统/浏览器/属地）、内容归属、登录来源由服务端托管——列表可见，编辑表单不出现，保存时保持原值。新建评论时填写绑定键。
 - **待审直达**：新评论进入 `pending` 时向管理员发站内通知，深链带 `filter_status=pending` 一键进队列（举报自动回待审的不再重复通知，随队列处理）
 - **关键词黑名单**：存 `plugin_comments_settings`，经 `/admin/settings` 读写（GET 返回词表；POST 逗号/换行分隔的原始串覆盖）——目前仅提供 API，暂无管理 UI（已知缺口）
 - 新评论落库后广播自定义事件 `comments:submitted`，宿主/其他插件可订阅做扩展（如管理员推送增强）
@@ -91,14 +93,14 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 
 ## 数据表
 
-| 表 | 用途 |
-|---|---|
-| `plugin_comments_comments` | 评论主表（双绑定、嵌套、状态、存证字段） |
-| `plugin_comments_likes` | 点赞（按 commentId + 身份（userId/visitorId）应用层幂等去重） |
-| `plugin_comments_settings` | 站点 KV（黑名单词） |
-| `plugin_comments_content_settings` | 内容级设置（closed/requireLogin/featuredOnly） |
+| 表                                 | 用途                                                          |
+| ---------------------------------- | ------------------------------------------------------------- |
+| `plugin_comments_comments`         | 评论主表（双绑定、嵌套、状态、存证字段）                      |
+| `plugin_comments_likes`            | 点赞（按 commentId + 身份（userId/visitorId）应用层幂等去重） |
+| `plugin_comments_settings`         | 站点 KV（黑名单词）                                           |
+| `plugin_comments_content_settings` | 内容级设置（closed/requireLogin/featuredOnly）                |
 
-举报计数与精选标记是主表列（`reports`/`reportReasons`/`featured`），无独立表。
+举报计数与精选标记是主表列（`reports`/`reportReasons`/`featured`），无独立表。`visitor_provider` 标记访客登录来源（当前 `wechat`），空 = 匿名游客或 CMS 登录用户；openid / unionid 不落库。
 
 `path` 列存可读原文（中文不编码）；库内若有编码形态的路径，插件升级时自动做一次归一回填（幂等，无匹配即空转）。
 
@@ -106,14 +108,14 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 
 挂载 `/api/v1/plugin/comments/`。public = 免登录；其余管理员会话。
 
-| 端点 | 档 | 说明 |
-|---|---|---|
-| `POST /submit` | public | 提交（蜜罐 204 静默、黑名单静默 spam、限流 IP+minInterval、验证码按 forms 作用域要求） |
-| `GET /list` | public | 顶层分页 + 后代带出 + likedIds + 本人待审并入 + `viewer`/`canOfficial`/设置下发 |
-| `GET /children` | public | 超长线程续拉（rootId + after 偏移） |
-| `GET /count` | public | 计数（featuredOnly 尊重） |
-| `POST /like` `POST /report` `POST /delete` `POST /edit` | public | 互动（身份匹配校验在服务端） |
-| `POST /admin/reply` `POST /admin/feature` `GET/POST /admin/settings` `GET/POST /admin/content-settings` `GET /admin/eligible` | admin | 管理端七类 |
+| 端点                                                                                                                          | 档     | 说明                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `POST /submit`                                                                                                                | public | 提交（蜜罐 204 静默、黑名单静默 spam、限流 IP+minInterval、验证码按 forms 作用域要求） |
+| `GET /list`                                                                                                                   | public | 顶层分页 + 后代带出 + likedIds + 本人待审并入 + `viewer`/`canOfficial`/设置下发        |
+| `GET /children`                                                                                                               | public | 超长线程续拉（rootId + after 偏移）                                                    |
+| `GET /count`                                                                                                                  | public | 计数（featuredOnly 尊重）                                                              |
+| `POST /like` `POST /report` `POST /delete` `POST /edit`                                                                       | public | 互动（身份匹配校验在服务端）                                                           |
+| `POST /admin/reply` `POST /admin/feature` `GET/POST /admin/settings` `GET/POST /admin/content-settings` `GET /admin/eligible` | admin  | 管理端七类                                                                             |
 
 ## 反滥用与安全
 

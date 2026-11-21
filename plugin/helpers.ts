@@ -11,11 +11,7 @@ import { resolveBinding } from './validate';
 import type { PublicComment } from './shared';
 
 /** JSON 响应辅助（默认 application/json；headers 用于 429 retry-after 等） */
-export function json(
-	data: unknown,
-	status = 200,
-	headers: Record<string, string> = {}
-): Response {
+export function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
 	return new Response(JSON.stringify(data), {
 		status,
 		headers: { 'Content-Type': 'application/json', ...headers }
@@ -47,6 +43,8 @@ export type CommentRow = {
 	avatar: unknown;
 	website: unknown;
 	userId: unknown;
+	/** 访客登录来源（当前仅 'wechat'），匿名游客为空 */
+	visitorProvider?: unknown;
 	status: unknown;
 	path: unknown;
 	contentId: unknown;
@@ -169,9 +167,12 @@ export function toPublic(
 		likes: typeof row.likes === 'number' ? row.likes : 0,
 		avatar: live?.avatar ?? snapshot ?? emailAvatarUrl(email),
 		website: typeof row.website === 'string' && row.website ? row.website : null,
+		visitorProvider: row.visitorProvider === 'wechat' ? 'wechat' : null,
 		os: hideEnv ? null : typeof row.os === 'string' && row.os ? row.os : null,
 		browser: hideEnv ? null : typeof row.browser === 'string' && row.browser ? row.browser : null,
-		region: hideEnv ? null : formatRegion(typeof row.region === 'string' ? row.region : null) || null,
+		region: hideEnv
+			? null
+			: formatRegion(typeof row.region === 'string' ? row.region : null) || null,
 		mine,
 		pending: row.status === 'pending'
 	};

@@ -46,9 +46,7 @@ function buildContext(
 		Object.entries(filter).every(([k, v]) => {
 			// _$or：任一分支条件全部命中即真（与 provider buildConditions 下推语义一致）
 			if (k === '_$or' && Array.isArray(v)) {
-				return v.some((part) =>
-					matchFilter(row, (part ?? {}) as Record<string, unknown>)
-				);
+				return v.some((part) => matchFilter(row, (part ?? {}) as Record<string, unknown>));
 			}
 			if (v !== null && typeof v === 'object' && '$op' in (v as object)) {
 				const { $op, $val } = v as { $op: string; $val: unknown };
@@ -63,7 +61,12 @@ function buildContext(
 	const dbFind = vi.fn(
 		async (
 			collection: string,
-			params: { filter?: Record<string, unknown>; limit?: number; page?: number; sort?: string } = {}
+			params: {
+				filter?: Record<string, unknown>;
+				limit?: number;
+				page?: number;
+				sort?: string;
+			} = {}
 		) => {
 			const filter = params.filter ?? {};
 			let data = rows.filter((r) => r._collection === collection && matchFilter(r, filter));
@@ -124,7 +127,7 @@ function buildContext(
 		// 插件配置（审核开关等）：管理端以字符串落库，测试按传入值原样返回
 		config: {
 			get: <T = unknown>(key: string, defaultValue?: T): T =>
-				(key in config ? (config[key] as T) : (defaultValue as T)),
+				key in config ? (config[key] as T) : (defaultValue as T),
 			getAll: (): Record<string, unknown> => ({ ...config }),
 			set: vi.fn()
 		},
@@ -178,13 +181,20 @@ export async function setup(
 	// （测试「留空 = 全关」时传 { enabledPaths: [], enabledTypes: [] }）
 	const merged = { enabledPaths: ['/a'], enabledTypes: ['posts'], ...config };
 	// 角色表种子：管理端端点的归属校验按角色标志位判定，测试默认超管角色
-	const seeded = [...seed, { _collection: 'roles', name: 'admin', appAccess: true, adminAccess: true }];
+	const seeded = [
+		...seed,
+		{ _collection: 'roles', name: 'admin', appAccess: true, adminAccess: true }
+	];
 	const built = buildContext(seeded, merged, content);
 	await plugin.register(built.ctx);
 	return built;
 }
 
-export function getEndpoint(built: Awaited<ReturnType<typeof setup>>, method: string, path: string) {
+export function getEndpoint(
+	built: Awaited<ReturnType<typeof setup>>,
+	method: string,
+	path: string
+) {
 	const endpoints = built.apiRegister.mock.calls.map((call) => call[0] as RegisteredEndpoint);
 	const ep = endpoints.find((e) => e.method === method && e.path === path);
 	if (!ep) throw new Error(`endpoint not registered: ${method} ${path}`);
@@ -195,7 +205,22 @@ export function mockEvent(opts: {
 	method: string;
 	url: string;
 	body?: unknown;
-	user?: { id: string; name: string; image?: string; email?: string; role?: string } | null;
+	user?: {
+		id: string;
+		name: string;
+		image?: string;
+		email?: string;
+		role?: string;
+	} | null;
+	/** 前台访客身份（框架 locals.visitor）；不传 = 匿名游客 */
+	visitor?: {
+		provider: 'wechat';
+		subject: string;
+		openid: string;
+		unionid?: string;
+		nickname: string;
+		avatar?: string;
+	} | null;
 	ua?: string;
 }): RequestEvent {
 	const request = new Request(opts.url, {
@@ -211,7 +236,7 @@ export function mockEvent(opts: {
 		request,
 		url: new URL(opts.url),
 		getClientAddress: () => '127.0.0.1',
-		locals: { user: user ?? undefined }
+		locals: { user: user ?? undefined, visitor: opts.visitor ?? undefined }
 	} as unknown as RequestEvent;
 }
 
@@ -258,4 +283,3 @@ export function userRow(overrides: Record<string, unknown>): Record<string, unkn
 		...overrides
 	};
 }
-

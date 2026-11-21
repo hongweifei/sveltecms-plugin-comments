@@ -65,6 +65,12 @@
 	let website = $state('');
 	/** better-auth 登录态：非空时身份三字段隐藏，服务端按账号落库 */
 	let account = $state<{ name: string } | null>(null);
+	/**
+	 * 微信访客身份（框架 /oauth/wechat/session）：enabled 控制入口显隐，
+	 * visitor 非空时隐藏身份三字段——昵称与头像来自签名 cookie，服务端认定。
+	 */
+	let wechatEnabled = $state(false);
+	let wechatVisitor = $state<{ nickname: string; avatar: string | null } | null>(null);
 	let honeypot = $state('');
 	let replyTo = $state<{ id: string; name: string } | null>(null);
 	let replyContent = $state('');
@@ -130,6 +136,10 @@
 		reportReasonLabel: tr('reportReasonLabel'),
 		reportReasonPlaceholder: tr('reportReasonPlaceholder'),
 		websiteLabel: tr('websiteLabel'),
+		wechatLogin: tr('wechatLogin'),
+		wechatAs: tr('wechatAs'),
+		wechatLogout: tr('wechatLogout'),
+		wechatBadge: tr('wechatBadge'),
 		submit: tr('submit'),
 		submitReply: tr('submitReply'),
 		submitting: tr('submitting'),
@@ -198,6 +208,39 @@
 				: `path=${encodeURIComponent(window.location.pathname)}`;
 		// contentType 供 /list 的 enabled 标志按类型白名单判定（仅 UI 提示）
 		return contentType ? `${base}&contentType=${encodeURIComponent(contentType)}` : base;
+	}
+
+	/** 登录 / 退出后回到当前文章（含查询串），由框架回调原路返回 */
+	function returnTo(): string {
+		return window.location.pathname + window.location.search;
+	}
+
+	/**
+	 * 微信访客身份探测：框架未配置公众号凭据时 enabled=false（不显示入口），
+	 * 已登录时用昵称回填表单。失败静默——评论本身不依赖这条链路。
+	 */
+	async function loadWechatVisitor() {
+		try {
+			const res = await fetch('/oauth/wechat/session', {
+				headers: { accept: 'application/json' }
+			});
+			if (!res.ok) return;
+			const body = (await res.json()) as {
+				enabled?: boolean;
+				authenticated?: boolean;
+				visitor?: { nickname?: string; avatar?: string | null } | null;
+			};
+			wechatEnabled = body.enabled === true;
+			if (body.authenticated && body.visitor?.nickname) {
+				wechatVisitor = {
+					nickname: body.visitor.nickname,
+					avatar: body.visitor.avatar ?? null
+				};
+				authorName = body.visitor.nickname;
+			}
+		} catch {
+			/* 增强能力失败不影响匿名评论 */
+		}
 	}
 
 	async function fetchCount() {
@@ -404,10 +447,10 @@
 	function buildPayload(): Record<string, unknown> {
 		return {
 			content: replyTo ? replyContent : content,
-			// 登录用户省略身份字段（服务端按账号落库）
-			authorName: account ? undefined : authorName,
-			email: account ? undefined : email,
-			website: account ? undefined : website || undefined,
+			// 登录用户 / 微信访客省略身份字段（服务端按账号或签名身份落库）
+			authorName: account || wechatVisitor ? undefined : authorName,
+			email: account || wechatVisitor ? undefined : email,
+			website: account || wechatVisitor ? undefined : website || undefined,
 			path: window.location.pathname,
 			contentId: contentId ?? undefined,
 			contentType: contentType ?? undefined,
@@ -436,7 +479,8 @@
 		localInsert(publicItem);
 		// 是否待审由服务端判定（审核开关关闭时直接 approved，提示语随之变化）
 		submittedPending = item.pending;
-		saveVisitor();
+		// 微信身份不走 localStorage 回填：昵称由签名 cookie 提供，退出后自然失效
+		if (!wechatVisitor) saveVisitor();
 	}
 
 	/**
@@ -775,6 +819,8 @@
 		// 取插件文案（zh/en 由服务端按当前语言下发，组件不再自带双语）
 		loadPluginMessages('comments').then((m) => (messages = m));
 		restoreVisitor();
+		// 微信访客身份与列表并行探测：框架未配置时入口自动隐藏
+		loadWechatVisitor();
 		// 登录态不再于此探测：本应用 better-auth 端点不走 HTTP（/api/auth/*
 		// 一律 410 Gone），由 /list 响应 viewer 字段随数据下发（load 内接线）
 		load();
@@ -794,7 +840,7 @@
 			<p class="sc-comments-note">{t.siteClosed}</p>
 		{:else if contentSettings?.closed}
 			<p class="sc-comments-note">{t.closed}</p>
-		{:else if contentSettings?.requireLogin && !account}
+		{:else if contentSettings?.requireLogin && !account && !wechatVisitor}
 			<p class="sc-comments-note">{t.loginToComment}</p>
 		{:else}
 		<form class="composer" onsubmit={submit}>
@@ -823,8 +869,35 @@
 				placeholder={t.placeholder}
 			></textarea>
 
+			<!-- 微信访客身份：未登录显示入口，已登录显示昵称与退出；身份三字段随之隐藏 -->
+			{#if wechatEnabled && !account}
+				<div class="wechat-identity">
+					{#if wechatVisitor}
+						{#if wechatVisitor.avatar}
+							<img class="wechat-avatar" src={wechatVisitor.avatar} alt="" />
+						{/if}
+						<span class="wechat-name">
+							{t.wechatAs.replace('{name}', wechatVisitor.nickname)}
+						</span>
+						<a
+							class="wechat-link"
+							href={`/oauth/wechat/logout?returnTo=${encodeURIComponent(returnTo())}`}
+						>
+							{t.wechatLogout}
+						</a>
+					{:else}
+						<a
+							class="wechat-link"
+							href={`/oauth/wechat/start?returnTo=${encodeURIComponent(returnTo())}`}
+						>
+							{t.wechatLogin}
+						</a>
+					{/if}
+				</div>
+			{/if}
+
 			<div class="composer-meta">
-				{#if !account}
+				{#if !account && !wechatVisitor}
 					<input
 						id="comment-author"
 						class="field field-sm"
@@ -989,6 +1062,9 @@
 					<span class="badge is-official">{t.officialBadge}</span>
 				{:else if c.isAuthor}
 					<span class="badge is-author">{t.authorBadge}</span>
+				{/if}
+				{#if c.visitorProvider === 'wechat'}
+					<span class="badge is-wechat">{t.wechatBadge}</span>
 				{/if}
 				{#if c.pending}
 					<span class="badge">{t.pendingBadge}</span>
@@ -1251,6 +1327,36 @@
 		color: var(--c-success);
 		background: transparent;
 		border-color: color-mix(in oklab, var(--c-success) 45%, transparent);
+	}
+	/* 微信标：访客经公众号网页授权登录后提交——微信品牌绿，与作者标区分 */
+	.badge.is-wechat {
+		color: #07c160;
+		background: transparent;
+		border-color: color-mix(in oklab, #07c160 45%, transparent);
+	}
+
+	.wechat-identity {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2, 0.5rem);
+		align-items: center;
+		margin-bottom: var(--space-2, 0.5rem);
+		font-size: var(--text-sm, 0.875rem);
+		color: var(--color-text-secondary);
+	}
+	.wechat-avatar {
+		width: 1.375rem;
+		height: 1.375rem;
+		border-radius: 999px;
+		object-fit: cover;
+	}
+	.wechat-link {
+		color: #07c160;
+		text-decoration: none;
+		font-weight: 500;
+	}
+	.wechat-link:hover {
+		text-decoration: underline;
 	}
 
 	.comment-time {

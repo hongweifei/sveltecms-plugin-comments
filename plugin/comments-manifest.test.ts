@@ -4,7 +4,7 @@ import { plugin, setup, type RegisteredEndpoint } from './comments-test-utils';
 describe('comments plugin manifest', () => {
 	it('declares official plugin identity with host engine gate and user-table permission', () => {
 		expect(plugin.manifest.name).toBe('comments');
-		expect(plugin.manifest.version).toBe('0.2.3');
+		expect(plugin.manifest.version).toBe('0.3.0');
 		expect(plugin.manifest.engines).toEqual({ cms: '^0.2' });
 		// 官方身份：adminAccess 角色 + officialRoles 白名单（角色名手输）
 		expect(plugin.manifest.config?.find((c) => c.key === 'officialRoles')).toMatchObject({
@@ -50,6 +50,7 @@ describe('comments plugin register wiring', () => {
 			'path',
 			'contentType',
 			'contentId',
+			'visitorProvider',
 			'contentOwnerId',
 			'status',
 			'official',
@@ -59,6 +60,7 @@ describe('comments plugin register wiring', () => {
 			'status',
 			'official',
 			'authorName',
+			'visitorProvider',
 			'email',
 			'content',
 			'path',
@@ -77,7 +79,7 @@ describe('comments plugin register wiring', () => {
 		// 编辑时隐藏（condition 以「新建尚无 id」为条件）
 		const fieldCondition = (name: string) =>
 			collection.fields.find((f) => f.name === name)?.condition;
-		for (const name of ['os', 'browser', 'region', 'contentOwnerId']) {
+		for (const name of ['os', 'browser', 'region', 'contentOwnerId', 'visitorProvider']) {
 			expect(fieldCondition(name)).toEqual({ field: 'id', value: '__never__' });
 		}
 		for (const name of ['path', 'contentType', 'contentId']) {
@@ -171,7 +173,11 @@ describe('comments plugin register wiring', () => {
 			{ content: '  hi  ', authorName: ' Bob ', path: '/x/?q=1' },
 			{ collection: 'comments' }
 		);
-		expect(transformed).toEqual({ content: 'hi', authorName: 'Bob', path: '/x' });
+		expect(transformed).toEqual({
+			content: 'hi',
+			authorName: 'Bob',
+			path: '/x'
+		});
 
 		const untouched = filter({ content: '  hi  ' }, { collection: 'pages' });
 		expect(untouched).toEqual({ content: '  hi  ' });
@@ -195,17 +201,16 @@ describe('comments plugin register wiring', () => {
 		).toEqual({ content: 'hi', path: '/x', visitorId: 'admin' });
 		// create 已带 visitorId → 保留，不覆写
 		expect(
-			filter(
-				{ content: 'hi', visitorId: 'abc123' },
-				{ collection: 'comments', action: 'create' }
-			)
+			filter({ content: 'hi', visitorId: 'abc123' }, { collection: 'comments', action: 'create' })
 		).toEqual({ content: 'hi', visitorId: 'abc123' });
 		// update 补丁不含 visitorId → 绝不注入（覆写会毁既有行的访客归属）
-		expect(
-			filter({ status: 'approved' }, { collection: 'comments', action: 'update' })
-		).toEqual({ status: 'approved' });
+		expect(filter({ status: 'approved' }, { collection: 'comments', action: 'update' })).toEqual({
+			status: 'approved'
+		});
 		// 缺 action → 不注入（保守：仅明确 create 语义才兜底）
-		expect(filter({ content: 'hi' }, { collection: 'comments' })).toEqual({ content: 'hi' });
+		expect(filter({ content: 'hi' }, { collection: 'comments' })).toEqual({
+			content: 'hi'
+		});
 	});
 
 	it('content:beforeWrite update 丢弃服务端托管字段（表单未渲染不抹库内值）', async () => {
@@ -224,6 +229,7 @@ describe('comments plugin register wiring', () => {
 			contentType: null,
 			contentId: null,
 			contentOwnerId: null,
+			visitorProvider: null,
 			os: null,
 			browser: null,
 			region: null
@@ -236,7 +242,12 @@ describe('comments plugin register wiring', () => {
 		// 新建评论时绑定三键仍可填写（落库前归一）
 		expect(
 			filter(
-				{ content: 'hi', path: '/x/?q=1', contentId: 'c-1', contentType: 'posts' },
+				{
+					content: 'hi',
+					path: '/x/?q=1',
+					contentId: 'c-1',
+					contentType: 'posts'
+				},
 				{ collection: 'comments', action: 'create' }
 			)
 		).toEqual({

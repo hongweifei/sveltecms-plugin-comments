@@ -41,6 +41,8 @@ export interface PublicComment {
 	likes: number;
 	avatar: string | null;
 	website: string | null;
+	/** 访客登录来源（当前仅 'wechat'）；null = 匿名游客或 CMS 登录用户 */
+	visitorProvider: 'wechat' | null;
 	os: string | null;
 	browser: string | null;
 	region: string | null;

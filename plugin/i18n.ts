@@ -15,14 +15,26 @@ export const messages: Record<string, Record<string, string>> = {
 	replyPlaceholder: { zh: '回复…', en: 'Reply…' },
 	nameLabel: { zh: '昵称', en: 'Name' },
 	nameOptional: { zh: '昵称（可选）', en: 'Name (optional)' },
-	emailLabel: { zh: '邮箱（必填，不公开）', en: 'Email (required, never shown)' },
-	emailOptional: { zh: '邮箱（可选，不公开）', en: 'Email (optional, never shown)' },
+	emailLabel: {
+		zh: '邮箱（必填，不公开）',
+		en: 'Email (required, never shown)'
+	},
+	emailOptional: {
+		zh: '邮箱（可选，不公开）',
+		en: 'Email (optional, never shown)'
+	},
 	reportReasonLabel: { zh: '举报理由', en: 'Report reason' },
 	reportReasonPlaceholder: {
 		zh: '可选：说明举报原因',
 		en: 'Optional: why are you reporting this?'
 	},
 	websiteLabel: { zh: '主页（可选）', en: 'Website (optional)' },
+	// 微信访客身份（框架 /oauth/wechat/*）：登录后隐藏身份三字段，昵称与头像
+	// 由签名 cookie 提供；徽章标在评论作者名后。
+	wechatLogin: { zh: '微信登录后评论', en: 'Comment with WeChat' },
+	wechatAs: { zh: '以 {name} 身份评论', en: 'Commenting as {name}' },
+	wechatLogout: { zh: '退出', en: 'Sign out' },
+	wechatBadge: { zh: '微信', en: 'WeChat' },
 	// 相对时间（前台 timeOf 取词）：此前在组件里硬编码中英双语，
 	// 站点接入第三语言时只能二选一，且 <html lang> 未设时恒落到英文分支。
 	// 带占位符 {n}，由前端替换计数。
@@ -38,8 +50,14 @@ export const messages: Record<string, Record<string, string>> = {
 		en: 'Submitted — visible to everyone after moderation (you can see it now).'
 	},
 	published: { zh: '发布成功，已公开显示。', en: 'Published.' },
-	tooFast: { zh: '操作太频繁，请稍后再试。', en: 'Too many actions — please slow down.' },
-	failed: { zh: '操作失败，请稍后再试。', en: 'Action failed — try again later.' },
+	tooFast: {
+		zh: '操作太频繁，请稍后再试。',
+		en: 'Too many actions — please slow down.'
+	},
+	failed: {
+		zh: '操作失败，请稍后再试。',
+		en: 'Action failed — try again later.'
+	},
 	loadFailed: { zh: '评论加载失败。', en: 'Failed to load comments.' },
 	empty: { zh: '还没有评论，来抢沙发～', en: 'No comments yet. Be the first.' },
 	guest: { zh: '访客', en: 'Guest' },
@@ -48,7 +66,10 @@ export const messages: Record<string, Record<string, string>> = {
 	like: { zh: '赞', en: 'Like' },
 	unlike: { zh: '取消赞', en: 'Unlike' },
 	report: { zh: '举报', en: 'Report' },
-	reported: { zh: '已收到举报，感谢反馈。', en: 'Report received — thank you.' },
+	reported: {
+		zh: '已收到举报，感谢反馈。',
+		en: 'Report received — thank you.'
+	},
 	del: { zh: '删除', en: 'Delete' },
 	deleteConfirm: { zh: '确定删除这条评论吗？', en: 'Delete this comment?' },
 	reportConfirm: { zh: '确定举报这条评论吗？', en: 'Report this comment?' },
@@ -69,10 +90,16 @@ export const messages: Record<string, Record<string, string>> = {
 	},
 	edit: { zh: '编辑', en: 'Edit' },
 	save: { zh: '保存', en: 'Save' },
-	editedFailed: { zh: '编辑失败，请稍后再试。', en: 'Edit failed — try again later.' },
+	editedFailed: {
+		zh: '编辑失败，请稍后再试。',
+		en: 'Edit failed — try again later.'
+	},
 	captchaLabel: { zh: '验证码', en: 'Captcha' },
 	captchaPlaceholder: { zh: '输入右图字符', en: 'Type the characters' },
-	captchaFailed: { zh: '验证码不正确，请重试。', en: 'Captcha incorrect — please try again.' },
+	captchaFailed: {
+		zh: '验证码不正确，请重试。',
+		en: 'Captcha incorrect — please try again.'
+	},
 
 	// —— 管理端内容设置（slot-comment-settings） ——
 	settings_title: { zh: '评论设置', en: 'Comment settings' },
@@ -86,21 +113,33 @@ export const messages: Record<string, Record<string, string>> = {
 	},
 	settings_loading: { zh: '加载中…', en: 'Loading…' },
 	settings_closed: { zh: '关闭评论', en: 'Close comments' },
-	settings_closedHint: { zh: '该内容不接收任何评论', en: 'This content accepts no new comments' },
+	settings_closedHint: {
+		zh: '该内容不接收任何评论',
+		en: 'This content accepts no new comments'
+	},
 	settings_requireLogin: { zh: '仅登录用户可评论', en: 'Signed-in users only' },
-	settings_requireLoginHint: { zh: '游客提交将被拒绝', en: 'Guest submissions are rejected' },
+	settings_requireLoginHint: {
+		zh: '游客提交将被拒绝',
+		en: 'Guest submissions are rejected'
+	},
 	settings_featuredOnly: { zh: '仅展示精选评论', en: 'Show featured only' },
 	settings_featuredOnlyHint: {
 		zh: '公开列表只显示勾选精选的评论',
 		en: 'Public list shows featured comments only'
 	},
 	settings_saved: { zh: '评论设置已保存', en: 'Comment settings saved' },
-	settings_saveFailed: { zh: '评论设置保存失败', en: 'Failed to save comment settings' },
+	settings_saveFailed: {
+		zh: '评论设置保存失败',
+		en: 'Failed to save comment settings'
+	},
 
 	// —— 后台列表行操作（slot-comment-admin-actions，方案 B） ——
 	admin_reply: { zh: '回复', en: 'Reply' },
 	admin_replyTitle: { zh: '回复评论', en: 'Reply to comment' },
-	admin_replySubtitle: { zh: '以官方身份回复，免审直接发布', en: 'Reply as the site, published instantly' },
+	admin_replySubtitle: {
+		zh: '以官方身份回复，免审直接发布',
+		en: 'Reply as the site, published instantly'
+	},
 	admin_replyTo: { zh: '回复', en: 'Reply to' },
 	admin_replyOriginal: { zh: '原评论', en: 'Original' },
 	admin_replyEscapeHint: { zh: '按 Esc 取消', en: 'Esc to cancel' },
@@ -112,7 +151,10 @@ export const messages: Record<string, Record<string, string>> = {
 	admin_replySending: { zh: '发送中…', en: 'Sending…' },
 	admin_replyCancel: { zh: '取消', en: 'Cancel' },
 	admin_replySent: { zh: '回复已发布', en: 'Reply published' },
-	admin_replyFailed: { zh: '回复失败，请稍后再试', en: 'Reply failed — try again later' },
+	admin_replyFailed: {
+		zh: '回复失败，请稍后再试',
+		en: 'Reply failed — try again later'
+	},
 
 	// —— 服务端邮件 / 通知（C4：双语站点的发信文案按请求 locale 取词） ——
 	// {author} 评论者名、{excerpt} 内容摘要、{siteName} 站点名
@@ -121,7 +163,10 @@ export const messages: Record<string, Record<string, string>> = {
 		en: 'Someone replied to your comment'
 	},
 	mail_reply_action: { zh: '查看回复', en: 'View reply' },
-	mail_admin_pending_title: { zh: '新评论待审核', en: 'A new comment is pending review' },
+	mail_admin_pending_title: {
+		zh: '新评论待审核',
+		en: 'A new comment is pending review'
+	},
 	mail_author_comment_title: {
 		zh: '你的内容有新评论',
 		en: 'A new comment on your content'
