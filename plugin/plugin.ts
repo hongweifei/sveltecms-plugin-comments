@@ -2,6 +2,7 @@ import type { Plugin } from '#lib/cms/types/plugin.ts';
 import { registerSchema } from '#lib/cms/utils/index.ts';
 import type { CommentRow } from './helpers';
 import { normalizePagePath, sanitizeAuthorName } from './validate';
+import { bindingOf } from './helpers';
 
 import { createConfigService } from './config';
 import { createContentSettingsService } from './content-settings';
@@ -9,7 +10,7 @@ import { createBlacklistService } from './blacklist';
 import { createClientInfoService } from './client-info';
 import { createPagePathService } from './page-paths';
 import { createApiDeps } from './deps';
-import { registerPublicApi } from './api-public';
+import { createCountComments, registerPublicApi } from './api-public';
 import { registerInteractionApi } from './api-interactions';
 import { registerAdminApi } from './api-admin';
 import { messages } from './i18n';
@@ -76,7 +77,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.3.7',
+		version: '0.3.8',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、微信登录身份、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, WeChat sign-in identity, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
@@ -460,6 +461,25 @@ const plugin: Plugin = {
 		registerPublicApi(d);
 		registerInteractionApi(d);
 		registerAdminApi(d);
+
+		// 服务供给：主题/其它插件按页面路径或内容项取已审核评论数，不必走 HTTP。
+		// 口径与 /count 完全一致（内容级 featuredOnly、60s 缓存与写路径失效共用）。
+		const countComments = createCountComments(d);
+		ctx.service.provide({
+			id: 'comments/count',
+			version: '1',
+			description: 'Approved comment counts by page path or content item',
+			api: {
+				byPath: (path: string) => {
+					const binding = bindingOf({ path });
+					return binding ? countComments(binding) : Promise.resolve(0);
+				},
+				byContent: (contentType: string, contentId: string) => {
+					const binding = bindingOf({ contentType, contentId });
+					return binding ? countComments(binding) : Promise.resolve(0);
+				}
+			}
+		});
 
 		// 文案注册（key → { locale }）：服务端 ctx.i18n.t() 取词，客户端组件
 		// 经 /api/v1/i18n/comments 端点取同一份（不占框架 messages/ 命名空间）

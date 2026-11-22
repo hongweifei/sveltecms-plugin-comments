@@ -12,6 +12,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 - [管理端能力](#管理端能力)
 - [数据表](#数据表)
 - [API 端点](#api-端点)
+- [对外服务](#对外服务)
 - [反滥用与安全](#反滥用与安全)
 
 ## 概念模型
@@ -118,6 +119,25 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 | `GET /count`                                                                                                                  | public | 计数（featuredOnly 尊重）                                                              |
 | `POST /like` `POST /report` `POST /delete` `POST /edit`                                                                       | public | 互动（身份匹配校验在服务端）                                                           |
 | `POST /admin/reply` `POST /admin/feature` `GET/POST /admin/settings` `GET/POST /admin/content-settings` `GET /admin/eligible` | admin  | 管理端七类                                                                             |
+
+## 对外服务
+
+插件通过框架的 `ctx.service.provide` 暴露一个服务，供主题或其它插件消费（无需 HTTP、不占前台请求预算）：
+
+| 服务 id | 方法 | 说明 |
+| --- | --- | --- |
+| `comments/count` | `byPath(path)` | 页面路径的已审核评论数（与 `/count` 同口径：内容级 `featuredOnly`、60s 缓存） |
+| `comments/count` | `byContent(contentType, contentId)` | 内容项的已审核评论数 |
+
+主题/插件侧取用：
+
+```ts
+const comments = ctx.service.get('comments/count');
+const count = comments ? await comments.byPath('/about') : 0;
+```
+
+- 服务随插件启用注册、停用撤销；未启用时 `get` 返回 `undefined`，调用方按 0 降级。
+- 计数口径与前台 `/count` 端点完全一致（含内容级精选过滤与写路径缓存失效），不会出现「服务数」与「页面 N 条评论」不一致。
 
 ## 反滥用与安全
 

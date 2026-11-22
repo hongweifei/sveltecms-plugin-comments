@@ -8,7 +8,7 @@ import { vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { createMockPluginContext } from '#lib/cms/engines/plugin/test-helpers.ts';
-import { computeVisitorId } from '#lib/cms/stats.ts';
+import { computeVisitorId } from '#lib/cms/http/stats.ts';
 import {
 	MemoryRateLimitStore,
 	setRateLimitStore

@@ -5,7 +5,7 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
-import { computeVisitorId } from '#lib/cms/stats.ts';
+import { computeVisitorId } from '#lib/cms/http/stats.ts';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import {
@@ -26,6 +26,7 @@ import {
 	validateSubmitInput
 } from './validate';
 import { readRememberedIdentity, rememberIdentity } from './identity-cookie';
+import type { CommentBinding } from './validate';
 import type { ApiDeps } from './deps';
 
 export function registerPublicApi(d: ApiDeps): void {
@@ -661,11 +662,13 @@ export function registerPublicApi(d: ApiDeps): void {
 		}
 	});
 
+
 	// 已审核评论计数（页面「N 条评论」），同样支持双绑定。60s 内存缓存
 	// （进程内评论变更即失效）——页面头部高频读，不值得每次打库。
 	// A1：featuredOnly 内容仅精选评论对外可见，计数必须同口径过滤 featured，
 	// 否则「N 条评论」远大于公开列表实际可见数。缓存键并入精选模式位——切换
 	// featuredOnly 后落新键直接重算，旧键 60s 自然过期（无独立失效通道）。
+	const countComments = createCountComments(d);
 	ctx.api.register({
 		method: 'GET',
 		path: '/count',
@@ -673,37 +676,46 @@ export function registerPublicApi(d: ApiDeps): void {
 		handler: async (event: RequestEvent) => {
 			const binding = bindingOf(event.url.searchParams);
 			if (!binding) return json({ error: 'Invalid binding' }, 400);
-			// 与 /list 同口径：path 绑定经 pagePaths 桥解析内容级设置（featuredOnly
-			// 计数必须跟列表一致，否则「N 条评论」与可见列表数对不上——A1 同款）
-			const csRecordId =
-				binding.contentId ??
-				(binding.path && cfg.hasEnabledPaths()
-					? await pagePaths.pathToRecordId(binding.path)
-					: null);
-			const cs = csRecordId
-				? await contentSettings.get(csRecordId, binding.contentId ? binding.contentType : 'pages')
-				: null;
-			const featuredOnly = cs?.featuredOnly ?? false;
-			// 缓存键含类型判别：同 contentId 不同集合的计数互不串（与查询口径一致）
-			const cacheKey = `${binding.path ?? ''}|${binding.contentId ?? ''}|${
-				binding.contentType ?? ''
-			}|${featuredOnly ? 'feat' : 'all'}`;
-			const cached = countCache.get(cacheKey);
-			if (cached && cached.expires > Date.now()) {
-				return json({ count: cached.value });
-			}
-			const filter: Record<string, unknown> = {
-				status: 'approved',
-				...bindingFilter(binding)
-			};
-			if (featuredOnly) filter.featured = true;
-			const page = await ctx.db.find('comments', { filter, limit: 1 });
-			const count = typeof page.meta.total === 'number' ? page.meta.total : page.data.length;
-			countCache.set(cacheKey, {
-				value: count,
-				expires: Date.now() + COUNT_TTL_MS
-			});
-			return json({ count });
+			return json({ count: await countComments(binding) });
 		}
 	});
+}
+
+/**
+ * 已审核评论计数（/count 与 service `comments/count` 共用同一实现）：
+ * 绑定解析内容级 featuredOnly，60s 内存缓存与写路径 bustCount 失效。
+ */
+export function createCountComments(d: ApiDeps) {
+	const { cfg, pagePaths, contentSettings, countCache, COUNT_TTL_MS, ctx } = d;
+	return async function countComments(binding: CommentBinding): Promise<number> {
+		// 与 /list 同口径：path 绑定经 pagePaths 桥解析内容级设置（featuredOnly
+		// 计数必须跟列表一致，否则「N 条评论」与可见列表数对不上——A1 同款）
+		const csRecordId =
+			binding.contentId ??
+			(binding.path && cfg.hasEnabledPaths() ? await pagePaths.pathToRecordId(binding.path) : null);
+		const cs = csRecordId
+			? await contentSettings.get(csRecordId, binding.contentId ? binding.contentType : 'pages')
+			: null;
+		const featuredOnly = cs?.featuredOnly ?? false;
+		// 缓存键含类型判别：同 contentId 不同集合的计数互不串（与查询口径一致）
+		const cacheKey = `${binding.path ?? ''}|${binding.contentId ?? ''}|${
+			binding.contentType ?? ''
+		}|${featuredOnly ? 'feat' : 'all'}`;
+		const cached = countCache.get(cacheKey);
+		if (cached && cached.expires > Date.now()) {
+			return cached.value;
+		}
+		const filter: Record<string, unknown> = {
+			status: 'approved',
+			...bindingFilter(binding)
+		};
+		if (featuredOnly) filter.featured = true;
+		const page = await ctx.db.find('comments', { filter, limit: 1 });
+		const count = typeof page.meta.total === 'number' ? page.meta.total : page.data.length;
+		countCache.set(cacheKey, {
+			value: count,
+			expires: Date.now() + COUNT_TTL_MS
+		});
+		return count;
+	};
 }
