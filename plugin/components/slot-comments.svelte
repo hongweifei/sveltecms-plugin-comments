@@ -66,7 +66,7 @@
 	/** better-auth 登录态：非空时身份三字段隐藏，服务端按账号落库 */
 	let account = $state<{ name: string } | null>(null);
 	/**
-	 * 访客身份（框架 /oauth/visitor/session，支持微信与 QQ）：providers 控制
+	 * 访客身份（框架 /api/auth/visitor/session，支持微信与 QQ）：providers 控制
 	 * 入口显隐，visitor 非空时隐藏身份三字段——昵称与头像来自签名 cookie，
 	 * 服务端认定。
 	 */
@@ -225,7 +225,7 @@
 	 */
 	async function loadVisitor() {
 		try {
-			const res = await fetch('/oauth/visitor/session', {
+			const res = await fetch('/api/auth/visitor/session', {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) return;
@@ -895,7 +895,7 @@
 						</span>
 						<a
 							class="wechat-link"
-							href={`/oauth/visitor/logout?returnTo=${encodeURIComponent(returnTo())}`}
+							href={`/api/auth/visitor/logout?returnTo=${encodeURIComponent(returnTo())}`}
 						>
 							{t.visitorLogout}
 						</a>

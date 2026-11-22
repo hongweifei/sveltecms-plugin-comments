@@ -19,7 +19,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 - **双键绑定**：每条评论绑定到「页面路径 `path`」或「内容项 `contentId`（+ `contentType` 判别集合）」至少其一，两条链路在提交/列表/计数全链路等价。前台优先按内容项 id 绑定（主题注入的 `window.__CMS_PAGE__`），无 id 时回落 URL 路径。`path` 存**可读原文**：地址栏里的中文段是 percent-encoding（`/article/%E7%BD%91…`），服务端归一还原为 `/article/网络安全`，后台列表、路径白名单与 pages slug 都按原文比对。
 - **无限嵌套回复**：`parentId` 指向任意已审核父评论；`rootId` 恒指向所在根评论。列表按顶层分页、后代按 `rootId` 一次带出，前台平铺在根评论下一层（回复内容带「回复 @目标」前缀，点击跳转定位），避免层层缩进。
 - **访客身份**：游客用昵称（可选）/ 邮箱（默认必填，仅存储）/ 主页（可选）；提交者指纹 `visitorId` = SHA-256(当日盐 + IP + UA)，**每日轮换**（当日内的「本人待审可见」、点赞去重与限频按它归人，跨日视为新访客——登录用户不受此限，恒按 `userId` 归身份），昵称/头像实时反查 user 表（manifest 声明只读 `user`），账号改名换头像即刻生效。
-- **微信 / QQ 访客**：站点配置公众号或 QQ 互联凭据后，表单出现对应「使用微信/QQ登录」入口。登录走框架 `/oauth/visitor/*`（微信公众号与 QQ 各自 start/callback），回调写签名 cookie；提交时服务端从 `event.locals.visitor` 取昵称与头像，忽略客户端填写的身份字段，落 `visitor_provider` 并给评论加「微信」或「QQ」徽章。openid / unionid 不落评论表，去重仍按 `visitorId`。
+- **微信 / QQ 访客**：站点配置公众号或 QQ 互联凭据后，表单出现对应「使用微信/QQ登录」入口。登录走框架 `/api/auth/visitor/*`（微信公众号与 QQ 各自 start/callback），回调写签名 cookie；提交时服务端从 `event.locals.visitor` 取昵称与头像，忽略客户端填写的身份字段，落 `visitor_provider` 并给评论加「微信」或「QQ」徽章。openid / unionid 不落评论表，去重仍按 `visitorId`。
 - **环境信息**：服务端从 UA 解析系统/浏览器、从 IP 异步解析归属地（best-effort，失败留空；内网地址标注「内网」），落库前归一成「国家·省份·城市·运营商」展示文本（离线库原始记录里的分隔符、占位符与国家代码不上屏）。
 
 ## 评论状态机
