@@ -34,8 +34,12 @@
 	{:else}
 		<div class="captcha-svg captcha-loading">…</div>
 	{/if}
+	<!-- 刷新按钮紧跟验证码图（窄屏换行时与图同排，语义就近） -->
+	<button type="button" class="btn btn-sm captcha-refresh" disabled={loading} onclick={onrefresh}>
+		↻
+	</button>
 	<input
-		class="field field-sm"
+		class="captcha-input"
 		type="text"
 		bind:value={answer}
 		maxlength="10"
@@ -44,21 +48,21 @@
 		aria-label={label}
 		placeholder={label}
 	/>
-	<button type="button" class="btn btn-sm" disabled={loading} onclick={onrefresh}>
-		↻
-	</button>
 </div>
 
 <style>
 	.captcha-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2, 0.5rem);
 		margin-top: var(--space-2, 0.5rem);
+		min-width: 0;
 	}
 
 	.captcha-svg {
 		flex: none;
+		max-width: 100%;
 		display: flex;
 		align-items: center;
 		overflow: hidden;
@@ -66,11 +70,43 @@
 		border-radius: var(--radius-md, 0.5rem);
 		background: #f3f4f6;
 	}
+	/* 服务端 SVG 经 {@html} 注入，无作用域哈希——用 :global 限高并随容器缩放 */
+	.captcha-svg :global(svg) {
+		display: block;
+		max-width: 100%;
+		height: auto;
+	}
 
 	.captcha-svg.captcha-loading {
 		width: 132px;
 		height: 56px;
 		justify-content: center;
 		color: var(--color-text-secondary);
+	}
+
+	/* 输入框样式自持：父组件的 .field 带作用域哈希，匹配不到本组件的元素。
+	   弹性基线 140px + min-width:0：窄容器里随行收窄，图与输入同排时不被撑破。 */
+	.captcha-input {
+		flex: 1 1 140px;
+		min-width: 0;
+		padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+		font-family: inherit;
+		font-size: var(--text-sm, 0.875rem);
+		color: var(--color-text);
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm, 0.375rem);
+	}
+	.captcha-input:focus {
+		outline: none;
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 3px var(--color-primary-light);
+	}
+	.captcha-input::placeholder {
+		color: var(--color-text-muted);
+	}
+
+	.captcha-refresh {
+		flex: none;
 	}
 </style>

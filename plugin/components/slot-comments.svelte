@@ -934,30 +934,32 @@
 							autocomplete="url"
 						/>
 					{/if}
-					<span class="emoji-anchor">
-						<button
-							type="button"
-							class="btn-emoji"
-							title="emoji"
-							aria-label="emoji"
-							onclick={(e) => toggleEmojiPicker('main', e.currentTarget)}
-						>
-							😊
-						</button>
-						<!-- 浮层：从 emoji 按钮上方弹出（右缘对齐、向左展开），不顶起表单 -->
-						{#if emojiFor === 'main'}
-							<EmojiPicker flip={emojiAlign === 'right'} onpick={insertEmoji} />
+					<span class="composer-actions">
+						<span class="emoji-anchor">
+							<button
+								type="button"
+								class="btn-emoji"
+								title="emoji"
+								aria-label="emoji"
+								onclick={(e) => toggleEmojiPicker('main', e.currentTarget)}
+							>
+								😊
+							</button>
+							<!-- 浮层：从 emoji 按钮上方弹出（右缘对齐、向左展开），不顶起表单 -->
+							{#if emojiFor === 'main'}
+								<EmojiPicker flip={emojiAlign === 'right'} onpick={insertEmoji} />
+							{/if}
+						</span>
+						{#if canOfficial}
+							<label class="official-check">
+								<input type="checkbox" bind:checked={markOfficial} />
+								{t.officialBadge}
+							</label>
 						{/if}
+						<button type="submit" class="btn btn-primary" disabled={submitting}>
+							{submitting ? t.submitting : t.submit}
+						</button>
 					</span>
-					{#if canOfficial}
-						<label class="official-check">
-							<input type="checkbox" bind:checked={markOfficial} />
-							{t.officialBadge}
-						</label>
-					{/if}
-					<button type="submit" class="btn btn-primary" disabled={submitting}>
-						{submitting ? t.submitting : t.submit}
-					</button>
 				</div>
 
 				{#if captchaRequired}
@@ -1260,6 +1262,10 @@
 		display: grid;
 		gap: var(--space-6, 1.5rem);
 		margin-top: var(--space-4, 1rem);
+		min-width: 0;
+	}
+	.thread {
+		min-width: 0;
 	}
 
 	/* twikoo 式平铺行：无卡片背景/边框，线程之间留白分隔 */
@@ -1314,6 +1320,7 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2, 0.5rem);
+		overflow-wrap: anywhere;
 	}
 
 	.comment-author {
@@ -1394,12 +1401,15 @@
 		margin-top: var(--space-1, 0.25rem);
 		font-size: var(--text-sm, 0.875rem);
 		line-height: 1.7;
-		overflow-wrap: break-word;
+		/* anywhere 同时参与最小内容宽度计算：长 URL / 无空格串不会把评论行
+		   与整块列表撑出容器（break-word 只影响换行，不改变 min-content） */
+		overflow-wrap: anywhere;
 		white-space: pre-wrap;
 	}
 
 	.comment-actions {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-3, 0.75rem);
 		margin-top: var(--space-2, 0.5rem);
@@ -1504,7 +1514,13 @@
 	.reply-form-actions {
 		position: relative;
 		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
 		gap: var(--space-2, 0.5rem);
+		min-width: 0;
+	}
+	.reply-form-actions > * {
+		min-width: 0;
 	}
 	.btn-sm {
 		padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
@@ -1526,12 +1542,28 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius, 0.5rem);
 	}
+	/* grid / flex 子项默认 min-width:auto：内部宽内容（验证码图 + 输入、
+	   身份三字段）会把轨道撑出容器，窄屏整块溢出。统一放开收缩。 */
+	.composer > *,
+	.reply-form > * {
+		min-width: 0;
+	}
 	.composer-meta {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-3, 0.75rem);
 		align-items: center;
 		justify-content: space-between;
+		min-width: 0;
+	}
+	/* 操作组（emoji / 官方 / 提交）：整体靠右，窄屏换行时成组落到下一行，
+	   不与换行后的身份输入挤在同一行 */
+	.composer-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-3, 0.75rem);
+		margin-left: auto;
+		min-width: 0;
 	}
 	/* emoji 锚点（行左缘）：浮层从按钮上方弹出 */
 	.emoji-anchor {
@@ -1681,6 +1713,10 @@
 			margin-left: 0;
 			width: 100%;
 			order: 3;
+		}
+		/* 窄屏身份三字段各占整行，不再留 240px 上限的右侧空白 */
+		.field-sm {
+			max-width: none;
 		}
 	}
 </style>

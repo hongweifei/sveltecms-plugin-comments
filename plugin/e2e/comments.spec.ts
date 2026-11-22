@@ -114,4 +114,34 @@ test.describe('评论插件主流程', () => {
 
 		await ctx.close();
 	});
+
+	test('移动端 320px：评论表单与长内容不产生横向溢出', async ({ browser }) => {
+		// 移动端回归：表单操作组、身份三字段、验证码行与长 URL 评论都不得
+		// 把页面撑出横向滚动（grid/flex 子项 min-width、长串断行两处修复的守卫）
+		const ctx = await browser.newContext({ viewport: { width: 320, height: 760 } });
+		const page = await ctx.newPage();
+		await page.goto(`/${slug}`, { waitUntil: 'load' });
+
+		const composer = page.locator('#comment-content');
+		await expect(composer).toBeVisible({ timeout: READY_TIMEOUT });
+
+		const longText = `长链接 ${'https://example.com/' + 'a'.repeat(120)}`;
+		await composer.fill(longText);
+		await page.locator('#comment-email').fill('e2e-mobile@example.com');
+		await page.locator('button[type="submit"]', { hasText: '发表评论' }).click();
+		await expect(page.locator('body')).toContainText('审核通过后', { timeout: 10_000 });
+
+		const metrics = await page.evaluate(() => ({
+			vw: document.documentElement.clientWidth,
+			scroll: document.documentElement.scrollWidth
+		}));
+		expect(metrics.scroll).toBeLessThanOrEqual(metrics.vw);
+
+		// 提交按钮落在视口内（操作组换行后仍靠容器右缘）
+		const submit = page.locator('.composer button[type="submit"]').first();
+		const box = await submit.boundingBox();
+		expect(box).not.toBeNull();
+		expect(Math.round(box!.x + box!.width)).toBeLessThanOrEqual(metrics.vw);
+		await ctx.close();
+	});
 });
