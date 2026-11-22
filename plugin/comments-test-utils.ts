@@ -208,6 +208,30 @@ export function getEndpoint(
 	return ep;
 }
 
+/**
+ * 测试用 cookie 容器：SvelteKit cookies API 的最小实现（get/set/delete），
+ * 记录 set / delete 调用以便断言下发的 cookie 名、值与属性。
+ */
+export function createCookieJar(initial: Record<string, string> = {}) {
+	const jar = new Map(Object.entries(initial));
+	const setCalls: Array<{ name: string; value: string; opts?: Record<string, unknown> }> = [];
+	const deleteCalls: string[] = [];
+	const api = {
+		get: (name: string) => jar.get(name),
+		set: (name: string, value: string, opts?: Record<string, unknown>) => {
+			jar.set(name, value);
+			setCalls.push({ name, value, opts });
+		},
+		delete: (name: string) => {
+			jar.delete(name);
+			deleteCalls.push(name);
+		},
+		getAll: () => [...jar.entries()].map(([name, value]) => ({ name, value })),
+		setAll: () => {}
+	};
+	return { jar, setCalls, deleteCalls, api };
+}
+
 export function mockEvent(opts: {
 	method: string;
 	url: string;
@@ -228,6 +252,8 @@ export function mockEvent(opts: {
 		nickname: string;
 		avatar?: string;
 	} | null;
+	/** cookie 容器（createCookieJar）：断言端点下发的 cookie 时传入 */
+	cookieJar?: ReturnType<typeof createCookieJar>;
 	ua?: string;
 }): RequestEvent {
 	const request = new Request(opts.url, {
@@ -239,10 +265,12 @@ export function mockEvent(opts: {
 	const isAdminPath = opts.url.includes('/admin/');
 	const actor = opts.user ?? (isAdminPath ? { id: 'admin-1', name: '站长' } : null);
 	const user = actor && isAdminPath ? { role: 'admin', ...actor } : actor;
+	const cookies = opts.cookieJar?.api ?? createCookieJar().api;
 	return {
 		request,
 		url: new URL(opts.url),
 		getClientAddress: () => '127.0.0.1',
+		cookies,
 		locals: { user: user ?? undefined, visitor: opts.visitor ?? undefined }
 	} as unknown as RequestEvent;
 }

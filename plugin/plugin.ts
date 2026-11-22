@@ -22,7 +22,7 @@ import { messages } from './i18n';
  *   恒指向所在根评论——列表按顶层分页、后代按 rootId 一次带出，前台平铺
  *   在根评论下一层（回复内容带「回复 @目标」前缀）；
  * - 访客身份：昵称（可选）/邮箱（必填，仅存储，对外只输出 gravatar 哈希）/
- *   主页（可选），前台 localStorage 记住填写者；
+ *   主页（可选），服务端以 HttpOnly cookie 记住填写者（回访预填）；
  * - 环境信息（twikoo 模式）：服务端从 UA 解析系统/浏览器、从 IP 异步解析
  *   归属地（best-effort，失败留空）；
  * - 互动：点赞（comment_likes 按 visitor 去重）、举报（达阈值自动回待审）、
@@ -76,7 +76,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.3.5',
+		version: '0.3.6',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、微信登录身份、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, WeChat sign-in identity, own pending visibility, admin replies and keyword blacklist (reference official plugin)'

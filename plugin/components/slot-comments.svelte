@@ -9,9 +9,9 @@
 	评论，服务端按顶层分页 + 后代一次带出，前台平铺在根评论下一层——twikoo
 	式，回复内容带「回复 @目标」前缀而非层层缩进）、
 	分页加载更多、评论计数、cravatar/gravatar 头像（邮箱 md5，无邮箱回退
-	字母色块）、访客身份三字段（昵称可选/邮箱必填/主页可选，localStorage
-	记住）、点赞（服务端按访客幂等）、举报、删除自己的评论、本人待审即时
-	可见、设备环境与地区展示（服务端解析）、官方回复徽章。
+	字母色块）、访客身份三字段（昵称可选/邮箱必填/主页可选，服务端 HttpOnly
+	cookie 记住、回访预填）、点赞（服务端按访客幂等）、举报、删除自己的评论、
+	本人待审即时可见、设备环境与地区展示（服务端解析）、官方回复徽章。
 
 	样式遵循默认主题设计系统（CSS 变量 + scoped style + 全局 .btn 类），
 	状态色在本组件内定义并随 .dark 适配（主题未提供 danger/success 令牌）。
@@ -310,6 +310,14 @@
 			canOfficial = body.canOfficial ?? false;
 			// 登录态由 /list 服务端按会话下发（本地无 better-auth HTTP 端点可探测）
 			if (body.viewer) account = { name: body.viewer.name };
+			// 回访免重填：服务端 HttpOnly cookie 记住的游客身份（/list 的 remembered）。
+			// 只在首次加载应用，避免切排序/翻页覆盖用户当前输入。
+			if (!account && !visitor && !identityRestored && body.remembered) {
+				authorName = body.remembered.authorName;
+				email = body.remembered.email;
+				website = body.remembered.website;
+				identityRestored = true;
+			}
 			contentSettings = body.contentSettings ?? null;
 			// D1：重建被截线程的续拉游标（重拉/切排序都以最新一批为准）
 			const nextPages: Record<string, { after: number; hasMore: boolean; loading: boolean }> = {};
@@ -426,27 +434,8 @@
 		if (!item.pending) count += 1;
 	}
 
-	/** 访客身份持久化（twikoo 模式）：下次评论自动回填 */
-	function saveVisitor() {
-		try {
-			localStorage.setItem('comments:visitor', JSON.stringify({ authorName, email, website }));
-		} catch {
-			/* 隐私模式等场景静默 */
-		}
-	}
-
-	function restoreVisitor() {
-		try {
-			const raw = localStorage.getItem('comments:visitor');
-			if (!raw) return;
-			const saved = JSON.parse(raw) as { authorName?: string; email?: string; website?: string };
-			authorName = saved.authorName ?? '';
-			email = saved.email ?? '';
-			website = saved.website ?? '';
-		} catch {
-			/* 忽略损坏数据 */
-		}
-	}
+	/** 访客身份回填是否已应用：只在首次加载预填一次，切排序/翻页不覆盖当前输入 */
+	let identityRestored = $state(false);
 
 	function buildPayload(): Record<string, unknown> {
 		return {
@@ -483,8 +472,7 @@
 		localInsert(publicItem);
 		// 是否待审由服务端判定（审核开关关闭时直接 approved，提示语随之变化）
 		submittedPending = item.pending;
-		// 访客身份不走 localStorage 回填：昵称由签名 cookie 提供，退出后自然失效
-		if (!visitor) saveVisitor();
+		// 身份回填由服务端写入 HttpOnly cookie（/submit 落库成功后写），前端不落任何存储
 	}
 
 	/**
@@ -822,7 +810,6 @@
 		mounted = true;
 		// 取插件文案（zh/en 由服务端按当前语言下发，组件不再自带双语）
 		loadPluginMessages('comments').then((m) => (messages = m));
-		restoreVisitor();
 		// 访客身份与列表并行探测：框架未配置微信/QQ 时入口自动隐藏
 		loadVisitor();
 		// 登录态不再于此探测：本应用 better-auth 端点不走 HTTP（/api/auth/*

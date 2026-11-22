@@ -25,6 +25,7 @@ import {
 	normalizeId,
 	validateSubmitInput
 } from './validate';
+import { readRememberedIdentity, rememberIdentity } from './identity-cookie';
 import type { ApiDeps } from './deps';
 
 export function registerPublicApi(d: ApiDeps): void {
@@ -271,6 +272,17 @@ export function registerPublicApi(d: ApiDeps): void {
 				const id = String(record.id);
 				bustCount();
 
+				// 回访免重填：游客身份三字段写入 HttpOnly cookie，下次打开评论区由
+				// /list 的 remembered 回传预填。登录用户与微信访客的身份来自会话 /
+				// 签名 cookie，不落这里。
+				if (!user && !visitor) {
+					rememberIdentity(event, {
+						authorName: authorName ?? '',
+						email: email ?? '',
+						website: website ?? ''
+					});
+				}
+
 				// 回复邮件通知（C1-2 / A3）：仅在回复**已公开**（免审直发 status=
 				// approved）时即时通知父作者；审核开启时回复还是 pending，此刻
 				// 发信会「收到通知却看不到」——延后到其审核通过（collection:updated
@@ -500,7 +512,7 @@ export function registerPublicApi(d: ApiDeps): void {
 			// 作者标联查派生（一次，本页所有行同绑定共用）：评论 userId === 内容
 			// 记录 userId 即派生「作者」徽章——不落列，内容转作者后徽章自动跟变。
 			const authorId = await threadAuthorId(binding);
-			return json({
+			const body = {
 				data: topRows.map((row) =>
 					toPublic(row, isMine(row), userBy, {
 						hideEnv,
@@ -549,13 +561,21 @@ export function registerPublicApi(d: ApiDeps): void {
 				// 组件无法自行探测会话——viewer 非空即登录，前端隐藏身份输入，
 				// /submit 服务端按会话落身份（与此处同源，伪造无意义）
 				viewer: event.locals.user ? { name: event.locals.user.name ?? '' } : null,
+				// 回访免重填：上次评论记住的游客身份（HttpOnly cookie）。登录用户与
+				// 微信访客的身份由会话/签名 cookie 决定，不回传。
+				remembered:
+					event.locals.user || event.locals.visitor
+						? undefined
+						: (readRememberedIdentity(event) ?? undefined),
 				maxLength: cfg.num('maxLength', 500),
 				minInterval: cfg.num('minInterval', 0),
 				page,
 				pageSize,
 				total: typeof approved.meta.total === 'number' ? approved.meta.total : approved.data.length,
 				hasMore: page * pageSize < (approved.meta.total ?? 0)
-			});
+			};
+			// 回包按访客私有：含本人点赞态与身份回填值，禁止共享缓存
+			return json(body, 200, { 'cache-control': 'private, no-store' });
 		}
 	});
 
@@ -637,7 +657,7 @@ export function registerPublicApi(d: ApiDeps): void {
 				total,
 				// 续拉起点 + 本批是否到底（前端下一次 after = after + data.length）
 				hasMore: after + slice.length < total
-			});
+			}, 200, { 'cache-control': 'private, no-store' });
 		}
 	});
 

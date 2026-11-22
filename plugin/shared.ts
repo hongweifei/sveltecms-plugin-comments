@@ -82,6 +82,15 @@ export interface CommentListBody {
 	maxLength?: number;
 	/** 同一访客两次评论的最小间隔秒数（前端据此提示） */
 	minInterval?: number;
+	/**
+	 * 上次评论记住的访客身份（服务端 HttpOnly cookie `comments_identity`）：
+	 * 昵称/邮箱/主页，前端据此预填，回访免重填。登录用户与微信访客不返回。
+	 */
+	remembered?: {
+		authorName: string;
+		email: string;
+		website: string;
+	};
 	/** 需要验证码 */
 	captchaRequired?: boolean;
 }
