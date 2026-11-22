@@ -22,7 +22,9 @@
 </script>
 
 <div class="emoji-picker" class:is-flip={flip}>
-	{#each EMOJIS as e (e)}
+	<!-- 静态候选表、不重排，无需 keyed each：以 emoji 为键会在数据重复时抛
+	     each_key_duplicate（点开表情即整块渲染失败），数据层已去重，这里也不设键 -->
+	{#each EMOJIS as e}
 		<button type="button" onclick={() => onpick(e)}>{e}</button>
 	{/each}
 </div>

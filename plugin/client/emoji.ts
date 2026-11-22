@@ -3,15 +3,18 @@
  *
  * 抽成独立模块：此前常量埋在 .svelte 里，既不能在别处复用，也无从单测。
  * 保持为短列表——完整 emoji 面板需要 Unicode 分组与搜索，不属本插件职责。
+ *
+ * 导出前按值去重：选择浮层用 emoji 本身作 keyed each 的键，同一字符出现两次
+ * 会让 Svelte 抛 each_key_duplicate、整块浮层渲染失败。数据层去重后，后续
+ * 追加候选也不会再触发该错误。
  */
-export const EMOJIS = [
+const EMOJI_CANDIDATES = [
 	'😊',
 	'😄',
 	'😆',
 	'😅',
 	'😂',
 	'🤣',
-	'😊',
 	'🙂',
 	'😉',
 	'😍',
@@ -44,3 +47,6 @@ export const EMOJIS = [
 	'📌',
 	'💡'
 ] as const;
+
+/** 去重后的候选表（保持原始顺序，保留首次出现的位置） */
+export const EMOJIS: readonly string[] = [...new Set<string>(EMOJI_CANDIDATES)];
