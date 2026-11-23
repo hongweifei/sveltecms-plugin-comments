@@ -11,7 +11,7 @@
  */
 import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { createRateLimiter } from '#lib/common/server/rate-limit.ts';
-import { userRole } from '#lib/cms/utils/user-role.ts';
+import { allUserRoles } from '#lib/cms/utils/user-role.ts';
 import type { ConfigService } from './config';
 import type { ContentSettingsService } from './content-settings';
 import type { BlacklistService } from './blacklist';
@@ -43,7 +43,7 @@ export interface ApiDeps {
 	 * 官方标门禁：可发官方回复（adminAccess 角色或 officialRoles 白名单角色）
 	 */
 	canPostOfficial: (user: unknown) => Promise<boolean>;
-	/** 超管判定（跨内容审核门禁）：userRole(user) → roles.adminAccess */
+	/** 超管判定（跨内容审核门禁）：任一角色 → roles.adminAccess */
 	isSuperAdmin: (user: unknown) => Promise<boolean>;
 	/**
 	 * 解析评论所属内容的作者标识：contentId 绑定经内容引擎反查，path 绑定
@@ -143,29 +143,36 @@ export function createApiDeps(
 	}
 
 	/**
-	 * 官方标门禁（canPostOfficial）：登录用户可发官方回复的条件——角色行
-	 * adminAccess 为真（超级管理员），或角色名列入 officialRoles 白名单。
+	 * 官方标门禁（canPostOfficial）：登录用户可发官方回复的条件——任一角色的
+	 * 角色行 adminAccess 为真（超级管理员），或角色名列入 officialRoles 白名单。
+	 *
+	 * 角色取框架 allUserRoles()：0.3 起用户可持多个角色（主角色 + `roles` 附加
+	 * 清单），RBAC 按并集判定，插件保持一致口径——附加角色带来的官方身份同样生效。
 	 *
 	 * appAccess 只代表「能登录后台」：内容创作者同样需要它，因此不构成官方
 	 * 身份依据。需要让编辑/运营角色发官方回复的站点，把角色名加进白名单。
 	 *
-	 * role 经框架 userRole() 守卫提取（better-auth 基础 User 类型不含 role），
-	 * 取自 session（服务端写入，客户端无法伪造；additionalFields input:false
-	 * 也挡了自助提权），权威判据再查 roles 表——按角色名 60s 缓存，角色调整
-	 * 一分钟内生效，官方标频率完全够用。非登录/无角色 → false（不发查询）。
+	 * 角色名经框架守卫提取（better-auth 基础 User 类型不含 role/roles），取自
+	 * session（服务端写入，客户端无法伪造），权威判据再查 roles 表——按角色名
+	 * 60s 缓存，角色调整一分钟内生效。非登录/无角色 → false（不发查询）。
 	 */
 	const roleCache = new Map<string, { at: number; adminAccess: boolean }>();
 	async function canPostOfficial(user: unknown): Promise<boolean> {
-		const role = userRole(user);
-		if (!role) return false;
-		if (await roleAdminAccess(role)) return true;
-		return services.cfg.officialRoles().includes(role);
+		const roles = allUserRoles(user);
+		if (roles.length === 0) return false;
+		for (const role of roles) {
+			if (await roleAdminAccess(role)) return true;
+		}
+		const whitelist = services.cfg.officialRoles();
+		return roles.some((role) => whitelist.includes(role));
 	}
 
-	/** 超管判定：角色行的 adminAccess 为真（跨内容审核的门禁） */
+	/** 超管判定：任一角色行的 adminAccess 为真（跨内容审核的门禁） */
 	async function isSuperAdmin(user: unknown): Promise<boolean> {
-		const role = userRole(user);
-		return role ? roleAdminAccess(role) : false;
+		for (const role of allUserRoles(user)) {
+			if (await roleAdminAccess(role)) return true;
+		}
+		return false;
 	}
 
 	/** 角色行的 adminAccess 标志：按角色名查 roles 表并缓存 60 秒，查询失败 false */

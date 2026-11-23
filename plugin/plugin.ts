@@ -14,6 +14,8 @@ import { createCountComments, registerPublicApi } from './api-public';
 import { registerInteractionApi } from './api-interactions';
 import { registerAdminApi } from './api-admin';
 import { messages } from './i18n';
+// 仅类型导入：把 `comments/count` 的形状并入框架服务契约表（declaration merging）
+import type { CommentsCountService } from './service-count';
 
 /**
  * 评论插件（官方范例 T3-3，v3）：
@@ -77,11 +79,17 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.3.8',
+		version: '0.4.0',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、微信登录身份、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, WeChat sign-in identity, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
 		},
+		// 宿主兼容：框架 0.3 起插件 API（migrations / service / capability）为本插件
+		// 的基线；0.x 阶段 minor 即破坏，0.2 站点继续用插件 0.3.x。
+		engines: { cms: '^0.3' },
+		// 自定义事件：插件默认只能发射自身命名空间，显式声明便于后台「事件」清单
+		// 与审计核对（消费方据此订阅）。
+		emits: ['comments:submitted'],
 		// SEC-5 声明式系统表权限（只读）：user 表用于登录用户头像/昵称实时反查；
 		// pages 表用于路径白名单 ↔ 记录换算（page-paths 桥：/list /count /submit
 		// 的 path 绑定解析内容级设置 + /admin/eligible 判定）；roles 表用于官方标
@@ -205,8 +213,7 @@ const plugin: Plugin = {
 				},
 				default: []
 			}
-		],
-		engines: { cms: '^0.2' }
+		]
 	},
 
 	async register(ctx) {
@@ -464,8 +471,9 @@ const plugin: Plugin = {
 
 		// 服务供给：主题/其它插件按页面路径或内容项取已审核评论数，不必走 HTTP。
 		// 口径与 /count 完全一致（内容级 featuredOnly、60s 缓存与写路径失效共用）。
+		// 形状经 service-count.ts 的 declaration merging 登记，消费方拿到强类型。
 		const countComments = createCountComments(d);
-		ctx.service.provide({
+		ctx.service.provide<CommentsCountService>({
 			id: 'comments/count',
 			version: '1',
 			description: 'Approved comment counts by page path or content item',
@@ -562,41 +570,44 @@ const plugin: Plugin = {
 	},
 
 	/**
-	 * 版本升级：把库内页面路径统一为可读原文。地址栏中的中文段是
-	 * percent-encoding（`/article/%E7%BD%91…`）；归一为原文后，后台列表、
-	 * 路径白名单与 pages slug 按同一形态呈现与比对。
-	 * 只改动归一后形态发生变化的行，幂等：再次执行即空转。
+	 * 版本化数据迁移（框架 0.3）：表结构补齐后、onInstall 之前按 version 升序
+	 * 执行，每个迁移与版本记录同一事务；已应用的版本记在 plugin_migrations，
+	 * 此后不再重复执行。
+	 *
+	 * v1：把库内页面路径统一为可读原文。地址栏中的中文段是 percent-encoding
+	 * （`/article/%E7%BD%91…`）；归一为原文后，后台列表、路径白名单与 pages
+	 * slug 按同一形态呈现与比对。只改动归一后形态发生变化的行，可重入。
 	 */
-	async migrate(fromVersion, ctx) {
-		const SCAN = 500;
-		let normalized = 0;
-		try {
-			for (let page = 1; ; page++) {
-				const res = await ctx.db.find('comments', {
-					limit: SCAN,
-					page,
-					sort: 'createdAt'
-				});
-				const rows = res.data as Array<Record<string, unknown>>;
-				for (const row of rows) {
-					const raw = row.path;
-					if (typeof raw !== 'string' || !raw.includes('%')) continue;
-					const path = normalizePagePath(raw);
-					if (!path || path === raw) continue;
-					await ctx.db.update('comments', String(row.id), { path });
-					normalized++;
+	migrations: [
+		{
+			version: 1,
+			description: '页面路径统一为可读原文',
+			async up(mctx) {
+				const SCAN = 500;
+				let normalized = 0;
+				for (let page = 1; ; page++) {
+					const res = await mctx.db.find('comments', {
+						limit: SCAN,
+						page,
+						sort: 'createdAt'
+					});
+					const rows = res.data as Array<Record<string, unknown>>;
+					for (const row of rows) {
+						const raw = row.path;
+						if (typeof raw !== 'string' || !raw.includes('%')) continue;
+						const path = normalizePagePath(raw);
+						if (!path || path === raw) continue;
+						await mctx.db.update('comments', String(row.id), { path });
+						normalized++;
+					}
+					if (rows.length < SCAN) break;
 				}
-				if (rows.length < SCAN) break;
+				if (normalized > 0) {
+					mctx.log.info(`comments: normalized ${normalized} page path(s)`);
+				}
 			}
-			if (normalized > 0) {
-				ctx.logger.info(
-					`comments: normalized ${normalized} page path(s) upgrading from v${fromVersion}`
-				);
-			}
-		} catch (e) {
-			ctx.logger.warn(`comments: page path normalization failed: ${String(e)}`);
 		}
-	}
+	]
 };
 
 export default plugin;

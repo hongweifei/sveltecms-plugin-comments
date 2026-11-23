@@ -22,10 +22,12 @@ if (!version) {
 }
 
 const zip = new AdmZip();
-// 发布包只含运行文件：测试与 e2e 排除（与 sync-into-host 同口径）。
+// 发布包只含运行文件：测试、e2e 与测试桩排除（与 sync-into-host 同口径）。
 // 路径为 zip 相对形态（如 e2e/comments.spec.ts），顶层目录无前导分隔符
 zip.addLocalFolder(SRC, undefined, (srcPath) =>
-	!/\.test\.ts$|(^|[/\\])e2e([/\\]|$)/.test(srcPath.replaceAll('\\', '/'))
+	!/\.test\.ts$|(^|[/\\])e2e([/\\]|$)|(^|[/\\])test-mocks([/\\]|$)/.test(
+		srcPath.replaceAll('\\', '/')
+	)
 );
 mkdirSync(path.join(ROOT, 'dist'), { recursive: true });
 const out = path.join(ROOT, 'dist', `comments-${version}.zip`);

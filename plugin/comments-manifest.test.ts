@@ -4,8 +4,14 @@ import { plugin, setup, type RegisteredEndpoint } from './comments-test-utils';
 describe('comments plugin manifest', () => {
 	it('declares official plugin identity with host engine gate and user-table permission', () => {
 		expect(plugin.manifest.name).toBe('comments');
-		expect(plugin.manifest.version).toBe('0.3.8');
-		expect(plugin.manifest.engines).toEqual({ cms: '^0.2' });
+		expect(plugin.manifest.version).toBe('0.4.0');
+		// 框架 0.3 起插件的基线 API（migrations / service / capability）
+		expect(plugin.manifest.engines).toEqual({ cms: '^0.3' });
+		// 自定义事件显式声明（消费方据此订阅；插件默认只能发自身命名空间）
+		expect(plugin.manifest.emits).toEqual(['comments:submitted']);
+		// 版本化数据迁移：框架记录到 plugin_migrations，只执行一次
+		expect(plugin.migrations?.map((m) => m.version)).toEqual([1]);
+		expect(plugin.migrate).toBeUndefined();
 		// 官方身份：adminAccess 角色 + officialRoles 白名单（角色名手输）
 		expect(plugin.manifest.config?.find((c) => c.key === 'officialRoles')).toMatchObject({
 			type: 'multiselect',

@@ -2,12 +2,25 @@ import { describe, it, expect } from 'vitest';
 import { plugin, setup, commentRow } from './comments-test-utils';
 
 /**
- * 升级回填：库内页面路径统一为可读原文。地址栏里的中文段是
- * percent-encoding（`/article/%E7%BD%91…`），早先落库的路径是这个编码形态。
+ * 升级回填（框架 0.3 的 migrations 机制）：库内页面路径统一为可读原文。
+ * 地址栏里的中文段是 percent-encoding（`/article/%E7%BD%91…`），早先落库的
+ * 路径是这个编码形态。
  */
-describe('页面路径回填（migrate）', () => {
+describe('页面路径回填（migrations v1）', () => {
+	const migration = plugin.migrations![0];
+	/** 迁移上下文：插件表可读写，sql 由框架提供（本迁移走 db API，不消费 sql） */
 	const run = (built: Awaited<ReturnType<typeof setup>>) =>
-		plugin.migrate!('0.2.0', built.ctx);
+		migration.up({
+			db: built.ctx.db,
+			sql: async () => [],
+			log: { info: () => {}, warn: () => {}, error: () => {} }
+		});
+
+	it('声明为带版本号的数据迁移', () => {
+		expect(migration.version).toBe(1);
+		expect(migration.description).toContain('页面路径');
+		expect(plugin.migrate).toBeUndefined();
+	});
 
 	it('把编码形态的历史路径回填为可读原文', async () => {
 		const built = await setup([

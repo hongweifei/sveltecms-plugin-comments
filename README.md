@@ -4,6 +4,8 @@ SvelteCMS 官方评论插件——独立仓库开发，经[社区插件市场](h
 
 功能：前台评论区（嵌套线程/点赞/举报/编辑删除/游客与登录双态/微信与 QQ 访客登录）、官方回复（免审 + 徽章 + 邮件通知）、后台审核列表与行内回复、内容级开关、IP 属地/设备环境、黑名单、精选。完整说明见 [docs/FEATURES.md](docs/FEATURES.md)（概念模型 / 状态机 / 配置项 / 端点 / 反滥用）。
 
+> 框架基线 **SvelteCMS 0.3**（`manifest.engines.cms: '^0.3'`）：数据迁移走 `Plugin.migrations`（记录在 `plugin_migrations`），服务供给走 `ctx.service.provide` 并由 `service-count.ts` 做 declaration merging，事件经 `manifest.emits` 声明。0.2 站点请继续使用插件的 0.3.x 版本。
+>
 > 访客登录依赖框架的 `/api/auth/visitor/*` 与 `event.locals.visitor`（微信公众号、QQ）；站点未配置对应凭据时入口自动隐藏。
 >
 > 同时向宿主暴露服务 `comments/count`（框架 `ctx.service.provide`）：主题或其它插件可按页面路径 / 内容项取已审核评论数，无需走 HTTP。
@@ -68,7 +70,7 @@ pnpm package      # 打发布 zip + SHA-256
 
 ```bash
 node scripts/package.mjs           # dist/comments-<version>.zip + SHA-256
-git tag v0.2.0 && git push --tags  # Release 工作流自动挂 zip
+git tag vX.Y.Z && git push --tags  # Release 工作流自动挂 zip
 ```
 
 上架社区市场：向 [sveltecms-marketplace](https://github.com/hongweifei/sveltecms-marketplace)
@@ -87,6 +89,6 @@ git tag v0.2.0 && git push --tags  # Release 工作流自动挂 zip
 
 ## 版本策略
 
-`plugin/plugin.ts` manifest 的 `version` 是唯一版本源（package.json 同步）；
-对宿主的最低兼容版本要求发布时写入 Release notes（宿主 API 面
-`ctx.*` 门面与插槽名保持向后兼容）。
+`plugin/plugin.ts` manifest 的 `version` 是唯一版本源（package.json 同步）。宿主兼容性写在 manifest 的 `engines.cms`：框架 0.x 阶段 minor 即破坏，`^0.3` 只匹配 0.3.x 宿主——0.2 站点继续用插件的 0.3.x 版本（其 manifest 声明 `^0.2`）。
+
+插件自身的数据变更（表结构补齐之外的回填）放在 `Plugin.migrations` 里，按 `version` 升序执行一次并记录在 `plugin_migrations`；框架 0.3 起不再使用旧的 `migrate(fromVersion)` 钩子。

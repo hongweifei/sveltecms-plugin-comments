@@ -242,6 +242,8 @@ export function mockEvent(opts: {
 		image?: string;
 		email?: string;
 		role?: string;
+		/** 附加角色清单（框架 0.3 多角色：主角色 + roles） */
+		roles?: string[];
 	} | null;
 	/** 前台访客身份（框架 locals.visitor）；不传 = 匿名游客 */
 	visitor?: {

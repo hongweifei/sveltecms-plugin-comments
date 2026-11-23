@@ -41,8 +41,8 @@ function schedule() {
 watch(SRC, { recursive: true }, (_event, filename) => {
 	if (!filename) return;
 	const rel = filename.toString();
-	// 测试与 e2e 不进宿主，无需为其变更触发同步
-	if (/\.test\.ts$|^e2e[/\\]/.test(rel)) return;
+	// 测试、e2e 与测试桩不进宿主，无需为其变更触发同步
+	if (/\.test\.ts$|^e2e[/\\]|^test-mocks[/\\]/.test(rel)) return;
 	schedule();
 });
 

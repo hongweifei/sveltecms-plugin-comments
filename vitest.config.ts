@@ -14,6 +14,17 @@ const HOST = path.resolve(import.meta.dirname, '.sveltecms');
 export default defineConfig({
 	resolve: {
 		alias: {
+			// 框架 0.3 的 paraglide 文案由宿主 Vite 插件以虚拟模块提供：插件仓的
+			// vitest 不加载它，渲染宿主组件时用空文案桩替代（只做结构断言）。
+			// 具体路径必须排在 '#lib' 前缀别名之前。
+			'#lib/paraglide/messages.js': path.join(
+				import.meta.dirname,
+				'plugin/test-mocks/paraglide-messages.ts'
+			),
+			'#lib/paraglide/messages': path.join(
+				import.meta.dirname,
+				'plugin/test-mocks/paraglide-messages.ts'
+			),
 			'#lib': path.join(HOST, 'src/lib'),
 			'$app/env/private': path.join(HOST, 'src/__mocks__/env-private.ts'),
 			'$app/env': path.join(HOST, 'src/__mocks__/app-env.ts'),

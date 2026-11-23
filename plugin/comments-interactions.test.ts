@@ -274,6 +274,30 @@ describe('POST /admin/reply', () => {
 		expect(body.comment.pending).toBe(false);
 	});
 
+	it('多角色：附加角色的 adminAccess 让用户跨内容回复并带官方徽章', async () => {
+		const built = await setup([
+			{
+				_collection: 'roles',
+				name: 'editor',
+				appAccess: true,
+				adminAccess: true,
+				permissions: '[]'
+			}
+		]);
+		const reply = getEndpoint(built, 'POST', '/admin/reply');
+		const res = await reply.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/admin/reply`,
+				body: { content: '跨内容回复', path: '/a' },
+				user: { id: 'multi-1', name: '多角色编辑', role: 'user', roles: ['editor'] }
+			})
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { comment: { official: boolean } };
+		expect(body.comment.official).toBe(true);
+	});
+
 	it('locks rootId when replying into a thread and requires a binding', async () => {
 		const built = await setup([commentRow({ id: 'root-1', path: '/a' })]);
 		const reply = getEndpoint(built, 'POST', '/admin/reply');

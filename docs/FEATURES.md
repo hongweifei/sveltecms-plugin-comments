@@ -34,7 +34,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 - `pending`：仅作者本人可见（按 `visitorId`/`userId` 匹配，带「审核中」标记，审核通过后即时公开）
 - `approved`：公开可见
 - `spam`：仅管理端可见
-- **官方回复免审**：具备官方身份的用户（角色 `adminAccess`，或角色名列入 `officialRoles` 白名单）经前台勾选或后台行内回复直接 `approved` + `official` 徽章。「能登录后台」（`appAccess`）只代表后台准入——内容创作者同样需要它，因此不构成官方身份；创作者回复自己内容下的评论按普通作者评论呈现（作者徽章由投影派生）。
+- **官方回复免审**：具备官方身份的用户（任一角色 `adminAccess`，或角色名列入 `officialRoles` 白名单；框架 0.3 的多角色附加清单同样计入）经前台勾选或后台行内回复直接 `approved` + `official` 徽章。「能登录后台」（`appAccess`）只代表后台准入——内容创作者同样需要它，因此不构成官方身份；创作者回复自己内容下的评论按普通作者评论呈现（作者徽章由投影派生）。
 - 新评论一律服务端强制 `pending`（客户端传入状态不可信），审核关闭时才直发
 
 ## 站点级配置（站长）
@@ -105,7 +105,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 
 举报计数与精选标记是主表列（`reports`/`reportReasons`/`featured`），无独立表。`visitor_provider` 标记访客登录来源（当前 `wechat`），空 = 匿名游客或 CMS 登录用户；openid / unionid 不落库。
 
-`path` 列存可读原文（中文不编码）；库内若有编码形态的路径，插件升级时自动做一次归一回填（幂等，无匹配即空转）。
+`path` 列存可读原文（中文不编码）；库内若有编码形态的路径，插件升级时经框架 `Plugin.migrations`（版本 1「页面路径统一为可读原文」）自动回填一次——执行记录在 `plugin_migrations`，可重入且不会重复执行。
 
 ## API 端点
 
@@ -138,6 +138,7 @@ const count = comments ? await comments.byPath('/about') : 0;
 
 - 服务随插件启用注册、停用撤销；未启用时 `get` 返回 `undefined`，调用方按 0 降级。
 - 计数口径与前台 `/count` 端点完全一致（含内容级精选过滤与写路径缓存失效），不会出现「服务数」与「页面 N 条评论」不一致。
+- 服务形状经 [service-count.ts](../plugin/service-count.ts) 的 declaration merging 登记进框架服务契约表（`PluginServiceContracts`），框架 0.3 下 `ctx.service.get('comments/count')` 直接是强类型，无需断言。
 
 ## 反滥用与安全
 

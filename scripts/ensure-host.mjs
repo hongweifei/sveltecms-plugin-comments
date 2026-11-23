@@ -94,7 +94,10 @@ function syncPlugin() {
 	cpSync(PLUGIN_SRC, PLUGIN_DEST, {
 		recursive: true,
 		// 顶层目录无分隔符前缀，(^|[/\\]) 才能命中 e2e
-		filter: (src) => !/\.test\.ts$|(^|[/\\])e2e([/\\]|$)/.test(src.replaceAll('\\', '/'))
+		filter: (src) =>
+			!/\.test\.ts$|(^|[/\\])e2e([/\\]|$)|(^|[/\\])test-mocks([/\\]|$)/.test(
+				src.replaceAll('\\', '/')
+			)
 	});
 }
 

@@ -1,20 +1,21 @@
 import { describe, it, expect } from 'vitest';
+import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { setup, commentRow } from './comments-test-utils';
 
-type CountService = {
-	byPath: (path: string) => Promise<number>;
-	byContent: (contentType: string, contentId: string) => Promise<number>;
-};
-
-function countService(ctx: { service: { get: (id: string) => unknown } }): CountService {
-	return ctx.service.get('comments/count') as CountService;
+/**
+ * 服务消费走框架 0.3 的强类型入口：service-count.ts 的 declaration merging
+ * 已把 `comments/count` 的形状登记进 PluginServiceContracts，这里不再断言类型。
+ */
+function countService(ctx: PluginContext) {
+	const api = ctx.service.get('comments/count');
+	if (!api) throw new Error('comments/count service not provided');
+	return api;
 }
 
 describe('service comments/count', () => {
 	it('注册时供给 comments/count（byPath / byContent 可用）', async () => {
 		const built = await setup();
 		const api = countService(built.ctx);
-		expect(api).toBeTruthy();
 		expect(typeof api.byPath).toBe('function');
 		expect(typeof api.byContent).toBe('function');
 		expect(built.ctx.service.list()).toContain('comments/count');

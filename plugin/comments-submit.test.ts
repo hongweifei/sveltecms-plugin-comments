@@ -737,4 +737,47 @@ describe('POST /submit 官方标（官方身份门禁 + 免审）', () => {
 		);
 		expect(((await res.json()) as { canOfficial: boolean }).canOfficial).toBe(true);
 	});
+
+	it('多角色：附加角色（roles）带来的官方身份同样生效', async () => {
+		const built = await setup(
+			[roleRow('admin', adminRole), roleRow('user', userRole), roleRow('creator', creatorRole)],
+			{ moderation: true, officialRoles: ['creator'] }
+		);
+		const submit = getEndpoint(built, 'POST', '/submit');
+		// 主角色 user + 附加 creator（白名单角色）
+		const multi = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ official: true }),
+				user: { id: 'u-multi', name: '多角色', role: 'user', roles: ['creator'] }
+			})
+		);
+		expect(multi.status).toBe(200);
+		expect((built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>).official).toBe(true);
+
+		// 主角色 user + 附加 admin（adminAccess 角色）
+		const asAdmin = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ official: true }),
+				user: { id: 'u-multi2', name: '多角色管理', role: 'user', roles: ['admin'] }
+			})
+		);
+		expect(asAdmin.status).toBe(200);
+		expect((built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>).official).toBe(true);
+
+		// 附加角色都不具备官方身份 → false
+		const plain = await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody({ official: true }),
+				user: { id: 'u-multi3', name: '多角色普通', role: 'user', roles: ['user'] }
+			})
+		);
+		expect(plain.status).toBe(200);
+		expect((built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>).official).toBe(false);
+	});
 });
