@@ -11,7 +11,8 @@
 	分页加载更多、评论计数、cravatar/gravatar 头像（邮箱 md5，无邮箱回退
 	字母色块）、访客身份三字段（昵称可选/邮箱必填/主页可选，服务端 HttpOnly
 	cookie 记住、回访预填）、点赞（服务端按访客幂等）、举报、删除自己的评论、
-	本人待审即时可见、设备环境与地区展示（服务端解析）、官方回复徽章。
+	本人待审即时可见、设备环境与地区展示（服务端解析）、官方回复徽章、
+	访客账号渠道（已绑定微信/QQ 标签 + 未绑定渠道的 ?bind=1 绑定入口）。
 
 	样式遵循默认主题设计系统（CSS 变量 + scoped style + 全局 .btn 类），
 	状态色在本组件内定义并随 .dark 适配（主题未提供 danger/success 令牌）。
@@ -30,6 +31,12 @@
 		type CommentSubmitBody
 	} from '../shared';
 	import { formatRelativeTime, letterOf, hueOf } from '../client/format';
+	import {
+		visitorBindUrl,
+		visitorChannelStateOf,
+		type VisitorAccountPayload,
+		type VisitorChannelState
+	} from '../visitor-channels';
 	import CaptchaField from './CaptchaField.svelte';
 	import EmojiPicker from './EmojiPicker.svelte';
 	import MyComments from './MyComments.svelte';
@@ -69,10 +76,14 @@
 	/**
 	 * 访客身份（框架 /api/auth/visitor/session，支持微信与 QQ）：providers 控制
 	 * 入口显隐，visitor 非空时隐藏身份三字段——昵称与头像来自签名 cookie，
-	 * 服务端认定。
+	 * 服务端认定。已登录后再取一次账号渠道（/api/auth/visitor/account）：
+	 * 一个访客 id 可挂微信与 QQ 两个渠道，没挂上的渠道给「绑定」入口，
+	 * 避免用户换个渠道登录时被框架当成切换账号、评论拆成两份。
 	 */
 	let visitorProviders = $state<{ id: string; label: string; start: string }[]>([]);
 	let visitor = $state<{ provider: string; nickname: string; avatar: string | null } | null>(null);
+	/** 已登录时取到的账号渠道；null = 未取到（不展示明细也不引导绑定） */
+	let channels = $state<VisitorChannelState | null>(null);
 	let honeypot = $state('');
 	let replyTo = $state<{ id: string; name: string } | null>(null);
 	let replyContent = $state('');
@@ -143,6 +154,8 @@
 		visitorLogin: tr('visitorLogin'),
 		visitorAs: tr('visitorAs'),
 		visitorLogout: tr('visitorLogout'),
+		visitorBind: tr('visitorBind'),
+		visitorAccount: tr('visitorAccount'),
 		wechatBadge: tr('wechatBadge'),
 		qqBadge: tr('qqBadge'),
 		submit: tr('submit'),
@@ -245,9 +258,29 @@
 					avatar: body.visitor.avatar ?? null
 				};
 				authorName = body.visitor.nickname;
+				// 渠道明细与身份并行取（同一次探测，不额外等待登录链路）
+				void loadChannels();
 			}
 		} catch {
 			/* 增强能力失败不影响匿名评论 */
+		}
+	}
+
+	/**
+	 * 账号渠道：已挂在本访客账号下的微信 / QQ。读取失败只是少一块增强信息——
+	 * 身份、评论、点赞都照常；此时不展示待绑定渠道，避免误把当前渠道再绑一遍。
+	 */
+	async function loadChannels() {
+		try {
+			const res = await fetch('/api/auth/visitor/account', {
+				headers: { accept: 'application/json' },
+				cache: 'no-store'
+			});
+			if (!res.ok) return;
+			const body = (await res.json()) as VisitorAccountPayload;
+			channels = visitorChannelStateOf(body, visitorProviders, visitor?.provider ?? null);
+		} catch {
+			/* 账号目录失败按「渠道未知」处理 */
 		}
 	}
 
@@ -900,7 +933,8 @@
 					required
 					placeholder={t.placeholder}></textarea>
 
-				<!-- 访客身份：未登录显示微信/QQ入口，已登录显示昵称与退出；身份三字段随之隐藏 -->
+				<!-- 访客身份：未登录显示微信/QQ入口，已登录显示昵称、已绑定渠道与退出；
+				     身份三字段随之隐藏 -->
 				{#if visitor}
 					<div class="wechat-identity">
 						{#if visitor.avatar}
@@ -909,6 +943,27 @@
 						<span class="wechat-name">
 							{t.visitorAs.replace('{name}', visitor.nickname)}
 						</span>
+						<!-- 已绑定渠道：同一访客账号挂多个渠道后，从任一入口登录都是同一份评论 -->
+						{#each channels?.bound ?? [] as binding (binding.provider)}
+							<span
+								class="channel-chip"
+								class:is-current={binding.provider === channels?.current}
+								title={providerLabel(binding.provider)}
+							>
+								{providerLabel(binding.provider)}
+							</span>
+						{/each}
+						<!-- 未绑定渠道：走 bind=1 挂到当前账号；直接登录会被框架当成切换账号 -->
+						{#each (channels?.available ?? []).filter((provider) => provider.start) as provider (provider.id)}
+							{@const bindUrl = visitorBindUrl(provider.start, returnTo())}
+							<a class="wechat-link" href={bindUrl} title={provider.label}>
+								{t.visitorBind.replace('{provider}', providerLabel(provider.id))}
+							</a>
+						{/each}
+						<!-- 账号页链接只在账号端点可用时出现：更早的框架版本没有该页面 -->
+						{#if channels}
+							<a class="wechat-link is-quiet" href="/account">{t.visitorAccount}</a>
+						{/if}
 						<a
 							class="wechat-link"
 							href={`/api/auth/visitor/logout?returnTo=${encodeURIComponent(returnTo())}`}
@@ -1103,7 +1158,11 @@
 					<span class="badge is-author">{t.authorBadge}</span>
 				{/if}
 				{#if c.visitorProvider}
-					<span class="badge" class:is-wechat={c.visitorProvider === 'wechat'} class:is-qq={c.visitorProvider === 'qq'}>
+					<span
+						class="badge"
+						class:is-wechat={c.visitorProvider === 'wechat'}
+						class:is-qq={c.visitorProvider === 'qq'}
+					>
 						{providerLabel(c.visitorProvider)}
 					</span>
 				{/if}
@@ -1422,6 +1481,27 @@
 	}
 	.wechat-link:hover {
 		text-decoration: underline;
+	}
+	/* 账号页入口是次要动作：中性色，不抢「绑定 / 退出」的视觉权重 */
+	.wechat-link.is-quiet {
+		color: var(--color-text-muted);
+		font-weight: 400;
+	}
+
+	/* 已绑定渠道：小圆角标签；当前正在用的渠道描边用主色 */
+	.channel-chip {
+		padding: 0 var(--space-2, 0.5rem);
+		font-size: var(--text-xs, 0.75rem);
+		font-weight: 500;
+		line-height: 1.6;
+		color: var(--color-text-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		white-space: nowrap;
+	}
+	.channel-chip.is-current {
+		color: var(--color-primary);
+		border-color: color-mix(in oklab, var(--color-primary) 45%, transparent);
 	}
 
 	.comment-time {

@@ -34,6 +34,11 @@ export const messages: Record<string, Record<string, string>> = {
 	visitorLogin: { zh: '使用{provider}登录', en: 'Sign in with {provider}' },
 	visitorAs: { zh: '以 {name} 身份评论', en: 'Commenting as {name}' },
 	visitorLogout: { zh: '退出', en: 'Sign out' },
+	// 访客账号渠道（框架 visitor_accounts / visitor_bindings）：已登录身份条把
+	// 已绑定渠道列成标签，未绑定渠道给「绑定」入口（start 地址 + ?bind=1）；
+	// 解绑与两账号合并只发生在框架账号页，插件只给入口。
+	visitorBind: { zh: '绑定{provider}', en: 'Link {provider}' },
+	visitorAccount: { zh: '账号与渠道', en: 'Account channels' },
 	wechatBadge: { zh: '微信', en: 'WeChat' },
 	qqBadge: { zh: 'QQ', en: 'QQ' },
 	// 管理端评论列表的登录来源筛选（toolbar 插槽）
@@ -99,6 +104,10 @@ export const messages: Record<string, Record<string, string>> = {
 	myCommentsHint: {
 		zh: '凭当前浏览器的访客身份管理你发过的评论：待审、已发布都能改或删。',
 		en: 'Manage your comments via this browser’s visitor identity — edit or delete pending and published ones.'
+	},
+	myCommentsAccountHint: {
+		zh: '评论跟访客账号走：在身份条绑定另一个渠道，换端登录仍是同一份评论；合并两个已有账号只并身份，更早的评论仍留在原账号。',
+		en: 'Comments follow the visitor account — link another channel to keep them across sign-ins. Merging accounts combines identity only; earlier comments stay with the original account.'
 	},
 	myCommentsEmpty: {
 		zh: '你还没有发表过评论。',
