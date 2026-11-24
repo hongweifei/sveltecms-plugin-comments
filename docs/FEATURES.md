@@ -78,7 +78,8 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 - 分页「加载更多」；顶层页后代按全局上限 500 条带出（防读放大护栏），被截断的线程标注给前端出「查看更多回复」，经 `/children` 精确续拉不重不漏
 - 点赞（幂等，按 visitor/user 去重，刷新后红心持久）
 - 举报（可选理由，累加计数）
-- 编辑 / 删除自己的评论（登录者按 userId 任意本人评论；游客按 visitorId 限本人待审——撤回场景。已过审评论被编辑且站点审核开启时，自动回 pending 重审，防「通过后再改违规内容」）。删除不留孤儿子树：删顶层 = 级联删整条线程；删回复 = 其直接子回复改挂到其父
+- 编辑 / 删除自己的评论（访客按统一访客 id、登录用户按 userId，权限面一致：本人待审与已发布的评论都能编辑、删除；被标记未公开的评论只能删除不能编辑。已过审评论被编辑且站点审核开启时，自动回 pending 重审，防「通过后再改违规内容」）。删除不留孤儿子树：删顶层 = 级联删整条线程；删回复 = 其直接子回复改挂到其父
+- **我的评论（无账号也能管理）**：标题行右侧「我的评论」入口打开自助面板，按访客 id / userId 列出本人发过的评论（含待审、已发布与被标记未公开），可就地编辑、删除并跳转所在页面——「跟有账号一样」；数据来自 `GET /mine`（只返回本人评论，私有缓存）
 - 头像：邮箱 md5 → cravatar.cn（gravatar 国内镜像，`d=404`——无对应头像时返 404）；无邮箱或 404 回退首字母色块（色相按昵称散列）；登录用户头像走 user 表实时值
 - 官方徽章（主色调）、作者徽章（内容作者评论派生「作者」，中性色与官方分层）、设备环境行（`Windows 11 · Edge · 浙江`）
 - 计数与标题区评论数联动（组件头部）；精选模式下公开计数同样只算精选（`/count` 尊重 `featuredOnly`），供主题/自定义 UI 复用该端点
@@ -120,6 +121,7 @@ SvelteCMS 官方评论插件的站长/管理员向完整手册。安装与开发
 | `GET /list`                                                                                                                   | public | 顶层分页 + 后代带出 + likedIds + 本人待审并入 + `viewer`/`canOfficial`/设置下发        |
 | `GET /children`                                                                                                               | public | 超长线程续拉（rootId + after 偏移）                                                    |
 | `GET /count`                                                                                                                  | public | 计数（featuredOnly 尊重）                                                              |
+| `GET /mine`                                                                                                                   | public | 我的评论（按访客 id / userId 归集，含状态，供自助管理面板）                            |
 | `POST /like` `POST /report` `POST /delete` `POST /edit`                                                                       | public | 互动（身份匹配校验在服务端）                                                           |
 | `POST /admin/reply` `POST /admin/feature` `GET/POST /admin/settings` `GET/POST /admin/content-settings` `GET /admin/eligible` | admin  | 管理端七类                                                                             |
 

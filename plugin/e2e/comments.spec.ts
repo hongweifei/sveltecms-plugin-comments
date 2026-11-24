@@ -115,6 +115,103 @@ test.describe('评论插件主流程', () => {
 		await ctx.close();
 	});
 
+	test('访客在评论区直接管理本人评论：已发布也能就地编辑与删除', async ({ browser }) => {
+		// 「就跟有账号一样」：同一浏览器（同一统一访客 id）发评论 → 后台通过 →
+		// 回到评论区，本人行内直接编辑（审核开启时回待审）与删除。
+		const anonCtx = await browser.newContext();
+		const anonPage = await anonCtx.newPage();
+		await anonPage.goto(`/${slug}`, { waitUntil: 'load' });
+		await expect(anonPage.locator('#comment-content')).toBeVisible({ timeout: READY_TIMEOUT });
+
+		const text = `行内管理 ${Date.now()}`;
+		await anonPage.locator('#comment-content').fill(text);
+		await anonPage.locator('#comment-email').fill('e2e-inline@example.com');
+		await anonPage.locator('button[type="submit"]', { hasText: '发表评论' }).click();
+		await expect(anonPage.locator('body')).toContainText('审核通过后', { timeout: 10_000 });
+
+		// 管理员审核通过该条
+		const admin = await getAdminContext(browser);
+		const adminPage = await admin.newPage();
+		await adminPage.goto('/admin/content/comments?filter_status=pending');
+		await expect(adminPage.locator('body')).toContainText(text, { timeout: READY_TIMEOUT });
+		const rowCheck = adminPage
+			.locator('tr', { hasText: text })
+			.first()
+			.locator('input[type="checkbox"]');
+		const approveBtn = adminPage.locator('button', { hasText: '通过' }).first();
+		await expect(async () => {
+			if ((await approveBtn.count()) > 0) return;
+			if (await rowCheck.isChecked()) await rowCheck.uncheck();
+			await rowCheck.check();
+			throw new Error('batch toolbar not rendered (hydrating)');
+		}).toPass({ timeout: READY_TIMEOUT });
+		await approveBtn.click();
+		await expect(adminPage.locator('body')).toContainText(/成功|已/, { timeout: 10_000 });
+		await admin.close();
+
+		// 本人回到评论区：已发布评论照常可见，且行内出「编辑 / 删除」
+		await anonPage.reload({ waitUntil: 'load' });
+		const row = anonPage.locator('.comment', { hasText: text }).first();
+		await expect(row).toBeVisible({ timeout: READY_TIMEOUT });
+		await expect(row.locator('button', { hasText: '编辑' })).toBeVisible();
+		await expect(row.locator('button', { hasText: '删除' })).toBeVisible();
+
+		// 行内编辑：保存后（审核开启）回待审，本人仍可见
+		await row.locator('button', { hasText: '编辑' }).click();
+		// 编辑态下评论正文移入 textarea，行定位不能再用 hasText，改按编辑表单定位
+		const editForm = anonPage.locator('.comment .edit-form').first();
+		await editForm.locator('textarea').fill(`${text} 改`);
+		await editForm.locator('button', { hasText: '保存' }).click();
+		const edited = anonPage.locator('.comment', { hasText: `${text} 改` }).first();
+		await expect(edited).toBeVisible({ timeout: 10_000 });
+		await expect(edited.locator('.badge', { hasText: '审核中' })).toBeVisible();
+
+		// 行内删除：确认弹窗后从列表消失
+		anonPage.on('dialog', (dialog) => dialog.accept());
+		await edited.locator('button', { hasText: '删除' }).click();
+		await expect(anonPage.locator('.comment', { hasText: `${text} 改` })).toHaveCount(0, {
+			timeout: 10_000
+		});
+		await anonCtx.close();
+	});
+
+	test('访客自助管理：我的评论面板编辑并删除本人评论', async ({ browser }) => {
+		// 无账号的访客凭访问同一浏览器拿到的统一访客 id 管理自己发过的评论
+		const ctx = await browser.newContext();
+		const page = await ctx.newPage();
+		await page.goto(`/${slug}`, { waitUntil: 'load' });
+		await expect(page.locator('#comment-content')).toBeVisible({ timeout: READY_TIMEOUT });
+
+		const text = `自助管理 ${Date.now()}`;
+		await page.locator('#comment-content').fill(text);
+		await page.locator('#comment-email').fill('e2e-manage@example.com');
+		await page.locator('button[type="submit"]', { hasText: '发表评论' }).click();
+		await expect(page.locator('body')).toContainText('审核通过后', { timeout: 10_000 });
+
+		// 打开「我的评论」：本人待审评论出现在面板里
+		await page.locator('.my-toggle').click();
+		await expect(page.locator('.my-panel')).toBeVisible({ timeout: 10_000 });
+		const item = page.locator('.my-item', { hasText: text });
+		await expect(item).toBeVisible({ timeout: 10_000 });
+
+		// 编辑并保存（审核开启，保存后仍是待审）。编辑态正文在 textarea 里，
+		// 按「含编辑框的条目」定位，不能继续用 hasText 匹配正文
+		await item.locator('button', { hasText: '编辑' }).click();
+		const editItem = page.locator('.my-item', { has: page.locator('textarea') }).first();
+		await editItem.locator('textarea').fill(`${text} 改`);
+		await editItem.locator('button', { hasText: '保存' }).click();
+		await expect(page.locator('.my-panel')).toContainText(`${text} 改`, { timeout: 10_000 });
+
+		// 删除（confirm 弹窗确认）
+		page.on('dialog', (dialog) => dialog.accept());
+		await page
+			.locator('.my-item', { hasText: `${text} 改` })
+			.locator('button', { hasText: '删除' })
+			.click();
+		await expect(page.locator('.my-panel')).not.toContainText(`${text} 改`, { timeout: 10_000 });
+		await ctx.close();
+	});
+
 	test('移动端 320px：评论表单与长内容不产生横向溢出', async ({ browser }) => {
 		// 移动端回归：表单操作组、身份三字段、验证码行与长 URL 评论都不得
 		// 把页面撑出横向滚动（grid/flex 子项 min-width、长串断行两处修复的守卫）

@@ -31,6 +31,8 @@ export interface ApiDeps {
 	reportLimiter: ReturnType<typeof createRateLimiter>;
 	deleteLimiter: ReturnType<typeof createRateLimiter>;
 	editLimiter: ReturnType<typeof createRateLimiter>;
+	/** 「我的评论」自助列表：读自己的评论，额度与写操作分开 */
+	mineLimiter: ReturnType<typeof createRateLimiter>;
 	/** C3-2 评论计数缓存（/count 高频读，60s TTL；写路径经 bustCount 失效） */
 	countCache: Map<string, { value: number; expires: number }>;
 	COUNT_TTL_MS: number;
@@ -90,6 +92,12 @@ export function createApiDeps(
 	const editLimiter = createRateLimiter('comments-edit', {
 		windowMs: 60_000,
 		maxRequests: 10,
+		keyFn: (c) => `ip:${c.ip ?? 'anon'}`
+	});
+	// 「我的评论」列表：只读自己的行，给宽松额度（60 次/分钟/IP）
+	const mineLimiter = createRateLimiter('comments-mine', {
+		windowMs: 60_000,
+		maxRequests: 60,
 		keyFn: (c) => `ip:${c.ip ?? 'anon'}`
 	});
 
@@ -231,6 +239,7 @@ export function createApiDeps(
 		reportLimiter,
 		deleteLimiter,
 		editLimiter,
+		mineLimiter,
 		countCache,
 		COUNT_TTL_MS,
 		CHILD_CAP: 500,

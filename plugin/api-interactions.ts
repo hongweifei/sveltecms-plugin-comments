@@ -6,12 +6,19 @@
 import { type RequestEvent } from '@sveltejs/kit';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { json, readJson, type CommentRow } from './helpers';
-import { MAX_CONTENT_LENGTH, REPORT_AUTO_PENDING_THRESHOLD, appendReportReason, isHoneypotFilled, normalizeId } from './validate';
+import {
+	MAX_CONTENT_LENGTH,
+	REPORT_AUTO_PENDING_THRESHOLD,
+	appendReportReason,
+	clampPaging,
+	isHoneypotFilled,
+	normalizeId
+} from './validate';
 import { visitorKeyOf } from './visitor';
 import type { ApiDeps } from './deps';
 
 export function registerInteractionApi(d: ApiDeps): void {
-	const { bustCount, cfg, ctx, deleteLimiter, editLimiter, likeLimiter, reportLimiter } = d;
+	const { bustCount, cfg, ctx, deleteLimiter, editLimiter, likeLimiter, mineLimiter, reportLimiter } = d;
 
 	// 点赞 toggle：未赞则赞、已赞则取消。comment_likes 按身份唯一键幂等——
 	// 登录 {commentId, userId}、游客 {commentId, userId IS NULL, visitorId}。
@@ -121,15 +128,14 @@ export function registerInteractionApi(d: ApiDeps): void {
 			const user = event.locals.user;
 			const visitorId = visitorKeyOf(event);
 			const ownByUser = user && comment.userId === user.id;
-			// B1：visitorId 判据只在游客态生效——登录用户一律按 userId，同 NAT/UA
-			// 的登录用户不再能撤回他人待审
-			const ownPendingByVisitor = !user && comment.status === 'pending' && comment.visitorId === visitorId;
-			if (!ownByUser && !ownPendingByVisitor) return json({ error: 'Forbidden' }, 403);
+			// 访客按统一访客 id 管理自己的评论（框架签名 cookie，服务端认定）：
+			// 与登录用户的权限面一致——本人任何状态的评论都能撤回。
+			const ownByVisitor = !user && comment.visitorId === visitorId;
+			if (!ownByUser && !ownByVisitor) return json({ error: 'Forbidden' }, 403);
 
 			const idStr = String(comment.id);
 			if (comment.rootId) {
-				// 回复：直接子回复改挂被删节点的父（游客只删待审，理论上无
-				// approved 子级；登录用户删已审回复时该分支保护线程完整）
+				// 回复：直接子回复改挂被删节点的父（保护线程完整）
 				const kids = await ctx.db.find('comments', {
 					filter: { parentId: idStr },
 					limit: 500
@@ -199,13 +205,14 @@ export function registerInteractionApi(d: ApiDeps): void {
 			const user = event.locals.user;
 			const visitorId = visitorKeyOf(event);
 			const ownByUser = user && comment.userId === user.id;
-			// B1：visitorId 判据只在游客态生效——登录用户一律按 userId，同 NAT/UA
-			// 的登录用户不再能撤回他人待审
-			const ownPendingByVisitor = !user && comment.status === 'pending' && comment.visitorId === visitorId;
-			if (!ownByUser && !ownPendingByVisitor) return json({ error: 'Forbidden' }, 403);
+			// 访客按统一访客 id 管理自己的评论：与登录用户同一权限面。已发布评论
+			// 编辑后按审核开关回待审（重进人工审核），被标记 spam 的评论不开放编辑。
+			const ownByVisitor = !user && comment.visitorId === visitorId;
+			if (!ownByUser && !ownByVisitor) return json({ error: 'Forbidden' }, 403);
+			if (comment.status === 'spam') return json({ error: 'Forbidden' }, 403);
 
 			// 审核开关开启时 approved 编辑回待审（编辑后内容重进人工审核）；
-			// pending 维持待审，spam 不可能到达（游客待审才可见）
+			// pending 维持待审
 			const nextStatus =
 				comment.status === 'approved' && cfg.isModerationEnabled() ? 'pending' : comment.status;
 			await ctx.db.update('comments', id, { content, status: nextStatus });
@@ -216,5 +223,58 @@ export function registerInteractionApi(d: ApiDeps): void {
 				status: nextStatus,
 				pending: nextStatus === 'pending'
 			});
+		}
+	});
+
+	// 「我的评论」自助管理：按统一访客 id（登录用户按 userId）列出本人的评论，
+	// 含待审 / 已发布 / 被标记未公开的行，供前台面板查看、编辑、删除——访客
+	// 无需账号也能像账号一样管理自己发过的内容。
+	ctx.api.register({
+		method: 'GET',
+		path: '/mine',
+		public: true,
+		handler: async (event: RequestEvent) => {
+			const rl = await mineLimiter.check({ ip: getRequestIp(event) });
+			if (!rl.allowed) return json({ error: 'Too many requests' }, 429);
+
+			const user = event.locals.user;
+			const visitorId = visitorKeyOf(event);
+			const { page, pageSize } = clampPaging(
+				event.url.searchParams.get('page'),
+				event.url.searchParams.get('pageSize')
+			);
+			// 登录用户看账号名下的评论；游客看自己访客 id 名下的评论
+			const filter: Record<string, unknown> = user
+				? { userId: user.id }
+				: { userId: null, visitorId };
+			const res = await ctx.db.find('comments', {
+				filter,
+				sort: '-createdAt',
+				page,
+				limit: pageSize
+			});
+			const rows = res.data as CommentRow[];
+			return json(
+				{
+					data: rows.map((row) => ({
+						id: String(row.id),
+						content: String(row.content ?? ''),
+						status: typeof row.status === 'string' ? row.status : 'pending',
+						path: typeof row.path === 'string' && row.path ? row.path : null,
+						contentId: typeof row.contentId === 'string' && row.contentId ? row.contentId : null,
+						contentType:
+							typeof row.contentType === 'string' && row.contentType ? row.contentType : null,
+						parentId: typeof row.parentId === 'string' && row.parentId ? row.parentId : null,
+						likes: typeof row.likes === 'number' ? row.likes : 0,
+						reports: typeof row.reports === 'number' ? row.reports : 0,
+						createdAt: String(row.createdAt ?? '')
+					})),
+					total: typeof res.meta.total === 'number' ? res.meta.total : rows.length,
+					page,
+					pageSize
+				},
+				200,
+				{ 'cache-control': 'private, no-store' }
+			);
 		}
 	});}

@@ -94,6 +94,22 @@ export const messages: Record<string, Record<string, string>> = {
 	},
 	edit: { zh: '编辑', en: 'Edit' },
 	save: { zh: '保存', en: 'Save' },
+	// 我的评论（访客/登录用户自助管理）：没有账号也能查看、编辑、删除自己发过的评论
+	myComments: { zh: '我的评论', en: 'My comments' },
+	myCommentsHint: {
+		zh: '凭当前浏览器的访客身份管理你发过的评论：待审、已发布都能改或删。',
+		en: 'Manage your comments via this browser’s visitor identity — edit or delete pending and published ones.'
+	},
+	myCommentsEmpty: {
+		zh: '你还没有发表过评论。',
+		en: 'You have not posted any comments yet.'
+	},
+	myCommentsLoadFailed: {
+		zh: '加载失败，请重试。',
+		en: 'Failed to load — try again.'
+	},
+	publishedBadge: { zh: '已发布', en: 'Published' },
+	hiddenBadge: { zh: '未公开', en: 'Hidden' },
 	editedFailed: {
 		zh: '编辑失败，请稍后再试。',
 		en: 'Edit failed — try again later.'

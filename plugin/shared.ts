@@ -109,6 +109,30 @@ export interface CommentSubmitBody {
 	error?: string;
 }
 
+/** 「我的评论」单行：本人评论的管理视图（含状态与所在页面） */
+export interface MyCommentItem {
+	id: string;
+	content: string;
+	/** pending（待审）/ approved（已发布）/ spam（未公开） */
+	status: string;
+	path: string | null;
+	contentId: string | null;
+	contentType: string | null;
+	parentId: string | null;
+	likes: number;
+	reports: number;
+	createdAt: string;
+}
+
+/** `GET /mine` 响应体 */
+export interface MyCommentsBody {
+	data: MyCommentItem[];
+	total: number;
+	page: number;
+	pageSize: number;
+	error?: string;
+}
+
 /** 长度上限（服务端校验用；前端据此设 maxlength——必须同源） */
 export const MAX_CONTENT_LENGTH = 2000;
 export const MAX_AUTHOR_NAME_LENGTH = 40;

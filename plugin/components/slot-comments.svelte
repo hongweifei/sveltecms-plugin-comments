@@ -32,6 +32,7 @@
 	import { formatRelativeTime, letterOf, hueOf } from '../client/format';
 	import CaptchaField from './CaptchaField.svelte';
 	import EmojiPicker from './EmojiPicker.svelte';
+	import MyComments from './MyComments.svelte';
 
 	/** 评论项：与服务端 toPublic() 共享同一类型（shared.ts）——
 	    此前本地手写一份，服务端加了 featured 客户端就漏字段（静默错位）。 */
@@ -267,6 +268,12 @@
 		} catch {
 			/* 计数失败不阻塞主列表 */
 		}
+	}
+
+	/** 「我的评论」面板里的增删改完成后：刷新本页列表与计数（状态可能已变） */
+	function refreshAfterManage() {
+		void load();
+		void fetchCount();
 	}
 
 	/** /list 响应体：与服务端共享同一类型（shared.ts）——此前本地手写一份，
@@ -614,6 +621,8 @@
 				});
 				tops = tops.map((it) => (it.id === c.id ? patch(it) : it));
 				children = children.map((it) => (it.id === c.id ? patch(it) : it));
+				// 已发布评论在审核开启时编辑后回待审，公开计数随之变化
+				void fetchCount();
 				cancelEdit();
 			} else {
 				flashOnce(t.editedFailed);
@@ -745,8 +754,13 @@
 				const doomed = collectDoomed(c.id);
 				tops = tops.filter((it) => !doomed.has(it.id));
 				children = children.filter((it) => !doomed.has(it.id));
-				if (!c.pending) count = Math.max(0, count - 1);
+				// 级联删线程时删掉的可能不止一条，计数交给服务端重算
+				void fetchCount();
+			} else {
+				flashOnce(t.failed);
 			}
+		} catch {
+			flashOnce(t.failed);
 		} finally {
 			busyId = null;
 		}
@@ -831,10 +845,14 @@
 
 {#if mounted}
 	<section class="sc-comments">
-		<h2 class="sc-comments-title">
-			{t.title}
-			{#if count > 0}<span class="sc-comments-count">{count}</span>{/if}
-		</h2>
+		<div class="sc-comments-head">
+			<h2 class="sc-comments-title">
+				{t.title}
+				{#if count > 0}<span class="sc-comments-count">{count}</span>{/if}
+			</h2>
+			<!-- 我的评论：访客按统一访客 id、登录用户按账号管理自己发过的评论 -->
+			<MyComments maxLength={maxContentLength} onchanged={refreshAfterManage} />
+		</div>
 
 		<!-- 发表区在列表上方（twikoo 式）。三级联动门控：站点白名单（enabled）→
 		     创作者关闭（contentSettings.closed）→ 创作者要求登录（requireLogin） -->
@@ -1245,13 +1263,21 @@
 		--comments-thread-gap: var(--space-3, 0.75rem);
 	}
 
+	/* 标题行：左侧标题 + 计数，右侧「我的评论」入口（面板从入口下方展开） */
+	.sc-comments-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3, 0.75rem);
+		margin-bottom: var(--space-4, 1rem);
+	}
 	.sc-comments-title {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2, 0.5rem);
 		font-size: var(--text-lg, 1.125rem);
 		font-weight: 600;
-		margin-bottom: var(--space-4, 1rem);
+		margin: 0;
 	}
 
 	.sc-comments-count {

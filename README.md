@@ -2,7 +2,9 @@
 
 SvelteCMS 官方评论插件——独立仓库开发，经[社区插件市场](https://github.com/hongweifei/sveltecms-marketplace)分发。
 
-功能：前台评论区（嵌套线程/点赞/举报/编辑删除/游客与登录双态/微信与 QQ 访客登录）、官方回复（免审 + 徽章 + 邮件通知）、后台审核列表与行内回复、内容级开关、IP 属地/设备环境、黑名单、精选。完整说明见 [docs/FEATURES.md](docs/FEATURES.md)（概念模型 / 状态机 / 配置项 / 端点 / 反滥用）。
+功能：前台评论区（嵌套线程/点赞/举报/编辑删除/游客与登录双态/微信与 QQ 访客登录/**访客自助管理「我的评论」**）、官方回复（免审 + 徽章 + 邮件通知）、后台审核列表与行内回复、内容级开关、IP 属地/设备环境、黑名单、精选。完整说明见 [docs/FEATURES.md](docs/FEATURES.md)（概念模型 / 状态机 / 配置项 / 端点 / 反滥用）。
+
+> 访客不需要账号也能像账号一样管理自己发过的评论：评论区行内可编辑/删除本人任意状态的评论，标题行「我的评论」面板按访客 id 汇总本人评论（`GET /mine`）；归属认框架统一访客 cookie，服务端签名认定。
 
 > 框架基线 **SvelteCMS 0.3**（`manifest.engines.cms: '^0.3'`）：数据迁移走 `Plugin.migrations`（记录在 `plugin_migrations`），服务供给走 `ctx.service.provide` 并由 `service-count.ts` 做 declaration merging，事件经 `manifest.emits` 声明。0.2 站点请继续使用插件的 0.3.x 版本。
 >

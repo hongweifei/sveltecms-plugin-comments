@@ -133,22 +133,25 @@ describe('POST /delete', () => {
 		expect(built.dbDelete).toHaveBeenCalledWith('comments', 'mine-pending');
 	});
 
-	it('forbids visitors deleting others comments or own approved comments', async () => {
+	it('forbids visitors deleting others comments', async () => {
+		const built = await setup([commentRow({ id: 'other-pending', status: 'pending', path: '/a' })]);
+		const del = getEndpoint(built, 'POST', '/delete');
+		const res = await del.handler(
+			mockEvent({ method: 'POST', url: `${BASE}/delete`, body: { id: 'other-pending' } })
+		);
+		expect(res.status).toBe(403);
+	});
+
+	it('访客可删除本人已发布的评论（与登录用户同权限面）', async () => {
 		const built = await setup([
-			commentRow({ id: 'other-pending', status: 'pending', path: '/a' }),
 			commentRow({ id: 'my-approved', status: 'approved', path: '/a', visitorId: VISITOR })
 		]);
 		const del = getEndpoint(built, 'POST', '/delete');
-
-		const other = await del.handler(
-			mockEvent({ method: 'POST', url: `${BASE}/delete`, body: { id: 'other-pending' } })
-		);
-		expect(other.status).toBe(403);
-
-		const ownApproved = await del.handler(
+		const res = await del.handler(
 			mockEvent({ method: 'POST', url: `${BASE}/delete`, body: { id: 'my-approved' } })
 		);
-		expect(ownApproved.status).toBe(403);
+		expect(res.status).toBe(200);
+		expect(built.dbDelete).toHaveBeenCalledWith('comments', 'my-approved');
 	});
 
 	it('allows logged-in authors to delete their own approved comment', async () => {
@@ -376,6 +379,29 @@ describe('C2-3 编辑自己的评论', () => {
 		expect(((await res.json()) as { status: string }).status).toBe('approved');
 	});
 
+	it('游客编辑本人已发布评论 → 200，审核开启时回待审', async () => {
+		const built = await setup(seed());
+		const edit = getEndpoint(built, 'POST', '/edit');
+		const res = await edit.handler(
+			mockEvent({ method: 'POST', url: `${BASE}/edit`, body: { id: 'own-1', content: '改过的话' } })
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { status: string; pending: boolean };
+		expect(body.status).toBe('pending');
+		expect(body.pending).toBe(true);
+	});
+
+	it('被标记未公开（spam）的本人评论不开放编辑', async () => {
+		const built = await setup([
+			commentRow({ id: 'own-spam', path: '/a', status: 'spam', visitorId: VISITOR })
+		]);
+		const edit = getEndpoint(built, 'POST', '/edit');
+		const res = await edit.handler(
+			mockEvent({ method: 'POST', url: `${BASE}/edit`, body: { id: 'own-spam', content: '改' } })
+		);
+		expect(res.status).toBe(403);
+	});
+
 	it('非本人 → 403；他人 approved 游客不可编辑', async () => {
 		const built = await setup([commentRow({ id: 'other-1', path: '/a', status: 'approved' })]);
 		const edit = getEndpoint(built, 'POST', '/edit');
@@ -392,6 +418,53 @@ describe('C2-3 编辑自己的评论', () => {
 			mockEvent({ method: 'POST', url: `${BASE}/edit`, body: { id: 'own-1', content: '   ' } })
 		);
 		expect(res.status).toBe(400);
+	});
+});
+
+describe('GET /mine 我的评论', () => {
+	it('游客只看到自己访客 id 名下的评论（含待审），他人评论不出现', async () => {
+		const built = await setup([
+			commentRow({ id: 'mine-a', path: '/a', status: 'approved', visitorId: VISITOR }),
+			commentRow({ id: 'mine-p', path: '/a', status: 'pending', visitorId: VISITOR }),
+			commentRow({ id: 'other', path: '/a', status: 'approved', visitorId: 'other' }),
+			commentRow({ id: 'user-row', path: '/a', status: 'approved', userId: 'u-1' })
+		]);
+		const mine = getEndpoint(built, 'GET', '/mine');
+		const res = await mine.handler(mockEvent({ method: 'GET', url: `${BASE}/mine` }));
+		const body = (await res.json()) as { data: { id: string; status: string }[]; total: number };
+		expect(body.total).toBe(2);
+		expect(body.data.map((c) => c.id).sort()).toEqual(['mine-a', 'mine-p']);
+		// 管理视图带状态，面板据此展示「审核中 / 已发布」
+		expect(body.data.find((c) => c.id === 'mine-p')?.status).toBe('pending');
+	});
+
+	it('登录用户看到账号名下的评论；游客视角不含他人账号评论', async () => {
+		const built = await setup([
+			commentRow({ id: 'by-user', path: '/a', status: 'approved', userId: 'u-1' }),
+			commentRow({ id: 'by-guest', path: '/a', status: 'approved', visitorId: VISITOR })
+		]);
+		const mine = getEndpoint(built, 'GET', '/mine');
+		const asUser = await mine.handler(
+			mockEvent({ method: 'GET', url: `${BASE}/mine`, user: { id: 'u-1', name: '宏伟' } })
+		);
+		expect(((await asUser.json()) as { data: { id: string }[] }).data.map((c) => c.id)).toEqual([
+			'by-user'
+		]);
+	});
+
+	it('分页与非法参数钳制', async () => {
+		const seed = Array.from({ length: 5 }, (_, i) =>
+			commentRow({ id: `m-${i}`, path: '/a', visitorId: VISITOR })
+		);
+		const built = await setup(seed);
+		const mine = getEndpoint(built, 'GET', '/mine');
+		const res = await mine.handler(
+			mockEvent({ method: 'GET', url: `${BASE}/mine?page=2&pageSize=2` })
+		);
+		const body = (await res.json()) as { data: unknown[]; total: number; page: number };
+		expect(body.total).toBe(5);
+		expect(body.data).toHaveLength(2);
+		expect(body.page).toBe(2);
 	});
 });
 
