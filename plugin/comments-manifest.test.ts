@@ -4,7 +4,7 @@ import { plugin, setup, type RegisteredEndpoint } from './comments-test-utils';
 describe('comments plugin manifest', () => {
 	it('declares official plugin identity with host engine gate and user-table permission', () => {
 		expect(plugin.manifest.name).toBe('comments');
-		expect(plugin.manifest.version).toBe('0.4.0');
+		expect(plugin.manifest.version).toBe('0.4.1');
 		// 框架 0.3 起插件的基线 API（migrations / service / capability）
 		expect(plugin.manifest.engines).toEqual({ cms: '^0.3' });
 		// 自定义事件显式声明（消费方据此订阅；插件默认只能发自身命名空间）
@@ -29,6 +29,9 @@ describe('comments plugin register wiring', () => {
 		const built = await setup();
 
 		expect(built.schemaRegister).toHaveBeenCalledWith('comments', expect.anything());
+		// 框架 0.3 统一访客：隐私数据主体随插件注册（导出/删除按访客 id）
+		expect(built.privacySubjects.has('comments')).toBe(true);
+		expect(built.privacySubjects.get('comments')?.label).toBe('评论与点赞');
 
 		expect(built.collectionRegister).toHaveBeenCalledTimes(1);
 		const collection = built.collectionRegister.mock.calls[0][0] as {

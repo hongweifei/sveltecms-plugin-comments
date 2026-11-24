@@ -25,9 +25,9 @@ export const comments = sqliteTable(
 		avatar: text('avatar'),
 		website: text('website'),
 		userId: text('user_id'),
-		// 访客登录来源（当前仅 'wechat'）：空 = 匿名游客或 CMS 登录用户。
-		// 公众号网页授权提交时写入，前台据此展示「微信」徽章；openid / unionid
-		// 不落库，去重仍沿用 visitorId 的 IP+UA 哈希。
+		// 访客登录来源（wechat / qq，取框架统一访客的 provider）：空 = 匿名游客
+		// 或 CMS 登录用户。社交登录提交时写入，前台据此展示提供方徽章；
+		// openid / unionid 不落库，去重与归属统一用 visitor_id。
 		visitorProvider: text('visitor_provider'),
 		status: text('status').notNull().default('pending'),
 		// 页面路径：可读原文（中文段不 percent-encode）——后台列表直接可读，
@@ -59,6 +59,9 @@ export const comments = sqliteTable(
 		os: text('os'),
 		browser: text('browser'),
 		region: text('region'),
+		// 访客标识：框架统一访客 id（cms_visitor 签名 cookie 的稳定 UUID，一年）；
+		// 无浏览器 cookie 的直连调用回落 IP+UA 哈希。点赞去重、本人待审可见、
+		// 删除/编辑归属与隐私导出/删除共用这一个键。
 		visitorId: text('visitor_id').notNull()
 	},
 	(table) => [
@@ -74,8 +77,8 @@ export const comments = sqliteTable(
 
 /**
  * 点赞去重：一条评论对一个身份至多一个赞（幂等的依据）。
- * B1：登录用户按 userId 去重（visitorId 的 IP+UA 哈希在同 NAT 下会串扰，
- * 不能作为登录身份的判据）；游客保留 visitorId 口径。
+ * B1：登录用户按 userId 去重（同一账号多端登录也只算一个赞）；游客按框架统一
+ * 访客 id（visitor_id）去重。
  */
 export const commentLikes = sqliteTable('plugin_comments_likes', {
 	...baseColumns(),

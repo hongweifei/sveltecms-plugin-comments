@@ -43,7 +43,7 @@ export type CommentRow = {
 	avatar: unknown;
 	website: unknown;
 	userId: unknown;
-	/** 访客登录来源（当前仅 'wechat'），匿名游客为空 */
+	/** 访客登录提供方 id（框架统一访客的 provider，如 wechat / qq），匿名游客为空 */
 	visitorProvider?: unknown;
 	status: unknown;
 	path: unknown;
@@ -167,7 +167,10 @@ export function toPublic(
 		likes: typeof row.likes === 'number' ? row.likes : 0,
 		avatar: live?.avatar ?? snapshot ?? emailAvatarUrl(email),
 		website: typeof row.website === 'string' && row.website ? row.website : null,
-		visitorProvider: row.visitorProvider === 'wechat' ? 'wechat' : null,
+		visitorProvider:
+			typeof row.visitorProvider === 'string' && row.visitorProvider
+				? row.visitorProvider
+				: null,
 		os: hideEnv ? null : typeof row.os === 'string' && row.os ? row.os : null,
 		browser: hideEnv ? null : typeof row.browser === 'string' && row.browser ? row.browser : null,
 		region: hideEnv

@@ -220,8 +220,9 @@
 	}
 
 	/**
-	 * 访客身份探测：框架未配置微信/QQ 凭据时不显示入口，已登录时用昵称回填
-	 * 表单。失败静默——评论本身不依赖这条链路。
+	 * 访客身份探测：框架统一访客接口（`/api/auth/visitor/session`）下发可用提供方
+	 * 与社交登录态；未配置提供方时不显示入口，已登录时用昵称回填表单。
+	 * 失败静默——评论本身不依赖这条链路。
 	 */
 	async function loadVisitor() {
 		try {
@@ -238,7 +239,7 @@
 			visitorProviders = body.providers ?? [];
 			if (body.authenticated && body.visitor?.nickname) {
 				visitor = {
-					provider: body.visitor.provider ?? 'wechat',
+					provider: body.visitor.provider ?? '',
 					nickname: body.visitor.nickname,
 					avatar: body.visitor.avatar ?? null
 				};
@@ -247,6 +248,16 @@
 		} catch {
 			/* 增强能力失败不影响匿名评论 */
 		}
+	}
+
+	/**
+	 * 访客提供方展示名：已知的微信/QQ 用插件 i18n（中英双语），其余提供方用
+	 * 框架下发的 label，最后回落 id——新增提供方无需改插件。
+	 */
+	function providerLabel(id: string): string {
+		if (id === 'wechat') return t.wechatBadge;
+		if (id === 'qq') return t.qqBadge;
+		return visitorProviders.find((p) => p.id === id)?.label ?? id;
 	}
 
 	async function fetchCount() {
@@ -839,7 +850,7 @@
 						class="wechat-link"
 						href={`${provider.start}?returnTo=${encodeURIComponent(returnTo())}`}
 					>
-						{t.visitorLogin.replace('{provider}', provider.id === 'qq' ? t.qqBadge : t.wechatBadge)}
+						{t.visitorLogin.replace('{provider}', providerLabel(provider.id))}
 					</a>
 				{/each}
 			</p>
@@ -894,10 +905,7 @@
 								class="wechat-link"
 								href={`${provider.start}?returnTo=${encodeURIComponent(returnTo())}`}
 							>
-								{t.visitorLogin.replace(
-									'{provider}',
-									provider.id === 'qq' ? t.qqBadge : t.wechatBadge
-								)}
+								{t.visitorLogin.replace('{provider}', providerLabel(provider.id))}
 							</a>
 						{/each}
 					</div>
@@ -1076,10 +1084,10 @@
 				{:else if c.isAuthor}
 					<span class="badge is-author">{t.authorBadge}</span>
 				{/if}
-				{#if c.visitorProvider === 'wechat'}
-					<span class="badge is-wechat">{t.wechatBadge}</span>
-				{:else if c.visitorProvider === 'qq'}
-					<span class="badge is-qq">{t.qqBadge}</span>
+				{#if c.visitorProvider}
+					<span class="badge" class:is-wechat={c.visitorProvider === 'wechat'} class:is-qq={c.visitorProvider === 'qq'}>
+						{providerLabel(c.visitorProvider)}
+					</span>
 				{/if}
 				{#if c.pending}
 					<span class="badge">{t.pendingBadge}</span>

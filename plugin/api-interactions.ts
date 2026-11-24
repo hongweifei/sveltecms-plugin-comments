@@ -4,10 +4,10 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
-import { computeVisitorId } from '#lib/cms/http/stats.ts';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { json, readJson, type CommentRow } from './helpers';
 import { MAX_CONTENT_LENGTH, REPORT_AUTO_PENDING_THRESHOLD, appendReportReason, isHoneypotFilled, normalizeId } from './validate';
+import { visitorKeyOf } from './visitor';
 import type { ApiDeps } from './deps';
 
 export function registerInteractionApi(d: ApiDeps): void {
@@ -15,9 +15,9 @@ export function registerInteractionApi(d: ApiDeps): void {
 
 	// 点赞 toggle：未赞则赞、已赞则取消。comment_likes 按身份唯一键幂等——
 	// 登录 {commentId, userId}、游客 {commentId, userId IS NULL, visitorId}。
-	// B1：登录用户按 userId 去重——visitorId 是 hash(盐+IP+UA)，同 NAT 出口 +
-	// 同 UA 的两个游客会互相顶掉，登录场景下不该再拿它当身份判据；游客保留
-	// visitorId 口径。计数落库夹 0 下限（防并发取消把 likes 减成负数）。
+	// B1：登录用户按 userId 去重（同一账号多端登录只算一个赞）；游客按框架
+	// 统一访客 id 去重，换 IP、换天都还是同一个人。计数落库夹 0 下限
+	// （防并发取消把 likes 减成负数）。
 	ctx.api.register({
 		method: 'POST',
 		path: '/like',
@@ -35,10 +35,7 @@ export function registerInteractionApi(d: ApiDeps): void {
 			if (!comment || comment.status !== 'approved') return json({ error: 'Not found' }, 404);
 
 			const user = event.locals.user;
-			const visitorId = computeVisitorId(
-				getRequestIp(event),
-				event.request.headers.get('user-agent') ?? undefined
-			);
+			const visitorId = visitorKeyOf(event);
 			const likeFilter: Record<string, unknown> = user
 				? { commentId: id, userId: user.id }
 				: { commentId: id, userId: null, visitorId };
@@ -122,10 +119,7 @@ export function registerInteractionApi(d: ApiDeps): void {
 			if (!comment) return json({ error: 'Not found' }, 404);
 
 			const user = event.locals.user;
-			const visitorId = computeVisitorId(
-				getRequestIp(event),
-				event.request.headers.get('user-agent') ?? undefined
-			);
+			const visitorId = visitorKeyOf(event);
 			const ownByUser = user && comment.userId === user.id;
 			// B1：visitorId 判据只在游客态生效——登录用户一律按 userId，同 NAT/UA
 			// 的登录用户不再能撤回他人待审
@@ -203,10 +197,7 @@ export function registerInteractionApi(d: ApiDeps): void {
 			if (!comment) return json({ error: 'Not found' }, 404);
 
 			const user = event.locals.user;
-			const visitorId = computeVisitorId(
-				getRequestIp(event),
-				event.request.headers.get('user-agent') ?? undefined
-			);
+			const visitorId = visitorKeyOf(event);
 			const ownByUser = user && comment.userId === user.id;
 			// B1：visitorId 判据只在游客态生效——登录用户一律按 userId，同 NAT/UA
 			// 的登录用户不再能撤回他人待审

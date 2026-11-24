@@ -6,9 +6,9 @@
  */
 import { vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
+import type { PrivacySubject } from '#lib/cms/types/privacy.ts';
 import type { PluginContext } from '#lib/cms/types/plugin.ts';
 import { createMockPluginContext } from '#lib/cms/engines/plugin/test-helpers.ts';
-import { computeVisitorId } from '#lib/cms/http/stats.ts';
 import {
 	MemoryRateLimitStore,
 	setRateLimitStore
@@ -25,7 +25,8 @@ export interface RegisteredEndpoint {
 
 export const BASE = 'http://localhost:5173/api/v1/plugin/comments';
 export const UA = 'vitest';
-export const VISITOR = computeVisitorId('127.0.0.1', UA);
+/** 统一访客 id（框架 cms_visitor 里的稳定 UUID）：匿名与社交访客共用同一个 id */
+export const VISITOR = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 export const EMAIL = 'visitor@test.dev';
 
 /** 可变内存存储：find/findById/create/update/delete 全部作用于同一 rows 数组 */
@@ -118,6 +119,20 @@ function buildContext(
 		if (i >= 0) rows.splice(i, 1);
 	});
 
+	// 访客数据主体登记：收集插件注册的 privacy subject，供导出/删除用例直接调用
+	// （宿主 mock 的 PluginContext 尚未提供 privacy 域，这里补一个最小实现）
+	const privacySubjects = new Map<string, PrivacySubject>();
+	const privacy = {
+		register(subject: PrivacySubject) {
+			privacySubjects.set(subject.key, subject);
+			return {
+				unregister: () => {
+					if (privacySubjects.get(subject.key) === subject) privacySubjects.delete(subject.key);
+				}
+			};
+		}
+	};
+
 	const ctx = {
 		...base,
 		schema: { register: vi.fn() },
@@ -125,6 +140,7 @@ function buildContext(
 		api: { register: vi.fn() },
 		slot: { register: vi.fn() },
 		filters: { register: vi.fn() },
+		privacy,
 		event: { on: vi.fn(), emit: vi.fn() },
 		content,
 		logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -161,6 +177,7 @@ function buildContext(
 	return {
 		ctx: ctx as unknown as PluginContext,
 		rows,
+		privacySubjects,
 		apiRegister: ctx.api.register as ReturnType<typeof vi.fn>,
 		schemaRegister: ctx.schema.register as ReturnType<typeof vi.fn>,
 		collectionRegister: ctx.collection.register as ReturnType<typeof vi.fn>,
@@ -245,13 +262,18 @@ export function mockEvent(opts: {
 		/** 附加角色清单（框架 0.3 多角色：主角色 + roles） */
 		roles?: string[];
 	} | null;
-	/** 前台访客身份（框架 locals.visitor）；不传 = 匿名游客 */
+	/**
+	 * 前台访客身份（框架统一访客 locals.visitor）：
+	 * - 不传 = 匿名访客（只有稳定 id，对应框架首次访问即发放的 cms_visitor）
+	 * - 传 provider/nickname = 社交登录访客（微信/QQ），id 仍用同一个 VISITOR
+	 * - 显式 null = 无访客 cookie（headless / API 直连，走 IP+UA 回落键）
+	 */
 	visitor?: {
-		provider: 'wechat';
-		subject: string;
-		openid: string;
+		provider?: 'wechat' | 'qq';
+		subject?: string;
+		openid?: string;
 		unionid?: string;
-		nickname: string;
+		nickname?: string;
 		avatar?: string;
 	} | null;
 	/** cookie 容器（createCookieJar）：断言端点下发的 cookie 时传入 */
@@ -268,12 +290,15 @@ export function mockEvent(opts: {
 	const actor = opts.user ?? (isAdminPath ? { id: 'admin-1', name: '站长' } : null);
 	const user = actor && isAdminPath ? { role: 'admin', ...actor } : actor;
 	const cookies = opts.cookieJar?.api ?? createCookieJar().api;
+	// 统一访客：框架对页面访问一定发放 id；测试默认按匿名访客建模
+	const visitor =
+		opts.visitor === null ? null : { id: VISITOR, ...(opts.visitor ?? {}) };
 	return {
 		request,
 		url: new URL(opts.url),
 		getClientAddress: () => '127.0.0.1',
 		cookies,
-		locals: { user: user ?? undefined, visitor: opts.visitor ?? undefined }
+		locals: { user: user ?? undefined, visitor: visitor ?? undefined }
 	} as unknown as RequestEvent;
 }
 

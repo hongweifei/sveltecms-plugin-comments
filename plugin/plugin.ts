@@ -79,7 +79,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.4.0',
+		version: '0.4.1',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、微信登录身份、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, WeChat sign-in identity, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
@@ -448,8 +448,7 @@ const plugin: Plugin = {
 				const toEmail = typeof parent.email === 'string' && parent.email ? parent.email : null;
 				if (!toEmail) return;
 				// 自己回复自己的判定：回复行无提交者身份快照可比 userId——按父的
-				// userId 与回复 userId 比对（与 /submit 同语义；visitorId 为哈希
-				// 亦可直接比对）
+				// userId 与回复 userId 比对；游客按统一访客 id（visitorId）比对
 				const samePerson =
 					parent.userId && rec.userId
 						? parent.userId === rec.userId
@@ -486,6 +485,101 @@ const plugin: Plugin = {
 					const binding = bindingOf({ contentType, contentId });
 					return binding ? countComments(binding) : Promise.resolve(0);
 				}
+			}
+		});
+
+		// 隐私登记（框架 0.3 统一访客）：访客凭自己的统一访客 cookie 在
+		// /api/v1/privacy/export|erase 自助导出或删除「按访客存的那份数据」。
+		// 评论/点赞的 visitor_id 就是框架访客 id（见 visitor.ts 的 visitorKeyOf），
+		// 故按 id 精确命中；登录账号写的评论挂在 userId 上（账号数据，不在此列），
+		// 历史行存的是旧 IP+UA 哈希，无法映射到访客 id，不在本登记范围。
+		ctx.privacy.register({
+			key: 'comments',
+			label: '评论与点赞',
+			async export(visitorId) {
+				const comments = await ctx.db.find('comments', {
+					filter: { visitorId, userId: null },
+					limit: 1000
+				});
+				const likes = await ctx.db.find('plugin_comments_likes', {
+					filter: { visitorId, userId: null },
+					limit: 1000
+				});
+				return {
+					comments: (comments.data as Array<Record<string, unknown>>).map((row) => ({
+						id: row.id,
+						content: row.content,
+						status: row.status,
+						path: row.path,
+						contentId: row.contentId,
+						contentType: row.contentType,
+						authorName: row.authorName,
+						email: row.email,
+						createdAt: row.createdAt
+					})),
+					likes: (likes.data as Array<Record<string, unknown>>).map((row) => ({
+						commentId: row.commentId,
+						createdAt: row.createdAt
+					}))
+				};
+			},
+			async erase(visitorId) {
+				let removed = 0;
+				const deleted: string[] = [];
+				const mine = await ctx.db.find('comments', {
+					filter: { visitorId, userId: null },
+					limit: 1000
+				});
+				// 与 /delete 同语义：顶层评论级联删整条线程；回复删前把直接子回复
+				// 改挂其父，别人的回复不跟着消失
+				for (const row of mine.data as Array<Record<string, unknown>>) {
+					const id = String(row.id);
+					if (row.rootId) {
+						const kids = await ctx.db.find('comments', {
+							filter: { parentId: id },
+							limit: 1000
+						});
+						for (const kid of kids.data as Array<Record<string, unknown>>) {
+							await ctx.db.update('comments', String(kid.id), {
+								parentId: (row.parentId as string | null) ?? null
+							});
+						}
+					} else {
+						const thread = await ctx.db.find('comments', {
+							filter: { rootId: id },
+							limit: 1000
+						});
+						for (const child of thread.data as Array<Record<string, unknown>>) {
+							await ctx.db.delete('comments', String(child.id));
+							deleted.push(String(child.id));
+							removed++;
+						}
+					}
+					await ctx.db.delete('comments', id);
+					deleted.push(id);
+					removed++;
+				}
+				// 被删评论上的点赞一并清理
+				if (deleted.length > 0) {
+					const likesOn = await ctx.db.find('plugin_comments_likes', {
+						filter: { commentId: { $op: 'in', $val: deleted } },
+						limit: 1000
+					});
+					for (const like of likesOn.data as Array<Record<string, unknown>>) {
+						await ctx.db.delete('plugin_comments_likes', String(like.id));
+						removed++;
+					}
+				}
+				// 本人点过的赞
+				const myLikes = await ctx.db.find('plugin_comments_likes', {
+					filter: { visitorId, userId: null },
+					limit: 1000
+				});
+				for (const like of myLikes.data as Array<Record<string, unknown>>) {
+					await ctx.db.delete('plugin_comments_likes', String(like.id));
+					removed++;
+				}
+				return removed;
 			}
 		});
 

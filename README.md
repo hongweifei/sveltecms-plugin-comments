@@ -6,7 +6,7 @@ SvelteCMS 官方评论插件——独立仓库开发，经[社区插件市场](h
 
 > 框架基线 **SvelteCMS 0.3**（`manifest.engines.cms: '^0.3'`）：数据迁移走 `Plugin.migrations`（记录在 `plugin_migrations`），服务供给走 `ctx.service.provide` 并由 `service-count.ts` 做 declaration merging，事件经 `manifest.emits` 声明。0.2 站点请继续使用插件的 0.3.x 版本。
 >
-> 访客登录依赖框架的 `/api/auth/visitor/*` 与 `event.locals.visitor`（微信公众号、QQ）；站点未配置对应凭据时入口自动隐藏。
+> 访客身份走框架统一访客（`/api/auth/visitor/*`、`event.locals.visitor`、签名 cookie `cms_visitor`）：匿名访客有稳定的 `visitor.id`，社交登录（微信 / QQ，提供方由框架注册表维护）把昵称头像并入同一 cookie。评论与点赞的 `visitor_id` 就用这个 id，并向框架登记隐私数据主体（`ctx.privacy.register`）——访客可经 `/api/v1/privacy/export|erase` 导出或删除自己的评论数据。
 >
 > 同时向宿主暴露服务 `comments/count`（框架 `ctx.service.provide`）：主题或其它插件可按页面路径 / 内容项取已审核评论数，无需走 HTTP。
 

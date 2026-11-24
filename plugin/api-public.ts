@@ -5,7 +5,6 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
-import { computeVisitorId } from '#lib/cms/http/stats.ts';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import {
@@ -27,6 +26,7 @@ import {
 } from './validate';
 import { readRememberedIdentity, rememberIdentity } from './identity-cookie';
 import type { CommentBinding } from './validate';
+import { socialVisitorOf, visitorKeyOf } from './visitor';
 import type { ApiDeps } from './deps';
 
 export function registerPublicApi(d: ApiDeps): void {
@@ -110,10 +110,11 @@ export function registerPublicApi(d: ApiDeps): void {
 				);
 				if (!captchaOk) return json({ error: 'Captcha verification failed' }, 403);
 
-				// 身份来源：CMS 登录用户取账号；微信访客取签名 cookie 解析出的
-				// locals.visitor（框架已验签，客户端传的昵称/邮箱不作数）；其余为游客。
+				// 身份来源：CMS 登录用户取账号；社交访客取框架统一访客里已验签的
+				// 昵称/头像（客户端传的昵称/邮箱不作数）；匿名访客仍按游客处理，
+				// 照常填写昵称与邮箱。
 				const user = event.locals.user;
-				const visitor = event.locals.visitor;
+				const visitor = socialVisitorOf(event);
 				const result = validateSubmitInput(parsed.body, {
 					skipIdentity: Boolean(user || visitor),
 					// B2b：站点开启「游客邮箱可留空」时空值放行（登录路径本就 skipIdentity 不消费）
@@ -170,7 +171,7 @@ export function registerPublicApi(d: ApiDeps): void {
 
 				const ip = getRequestIp(event);
 				const ua = event.request.headers.get('user-agent');
-				const visitorId = computeVisitorId(ip, ua ?? undefined);
+				const visitorId = visitorKeyOf(event);
 
 				// 父评论必须存在、已审核，且与本次提交共享绑定（防跨页挂楼）；
 				// rootId 锁定所在根评论（父即根 → 父 id，否则沿用父的 rootId）
@@ -248,8 +249,8 @@ export function registerPublicApi(d: ApiDeps): void {
 					...(visitor?.avatar ? { avatar: visitor.avatar } : {}),
 					website: user || visitor ? null : website,
 					userId: user?.id ?? null,
-					// 访客登录来源（当前仅 wechat）：前台据此展示「微信」徽章；
-					// openid / unionid 不落评论表，去重仍用 visitorId 哈希
+					// 访客登录来源（wechat / qq，框架统一访客的 provider）：前台据此
+					// 展示提供方徽章；openid / unionid 只在框架签名 cookie 里，不落库
 					visitorProvider: visitor ? visitor.provider : null,
 					status,
 					path,
@@ -408,12 +409,9 @@ export function registerPublicApi(d: ApiDeps): void {
 			});
 
 			const user = event.locals.user;
-			const visitorId = computeVisitorId(
-				getRequestIp(event),
-				event.request.headers.get('user-agent') ?? undefined
-			);
+			const visitorId = visitorKeyOf(event);
 			// B1：登录用户一律按 userId 判定「本人」——同 NAT/UA 的游客不再
-			// 互相顶号；游客保留 visitorId（其待审本人可见的既有机制）
+			// 互相顶号；游客按统一访客 id（其待审本人可见的既有机制）
 			const isMine = (row: CommentRow) =>
 				user ? row.userId === user.id : row.visitorId === visitorId;
 
@@ -563,9 +561,9 @@ export function registerPublicApi(d: ApiDeps): void {
 				// /submit 服务端按会话落身份（与此处同源，伪造无意义）
 				viewer: event.locals.user ? { name: event.locals.user.name ?? '' } : null,
 				// 回访免重填：上次评论记住的游客身份（HttpOnly cookie）。登录用户与
-				// 微信访客的身份由会话/签名 cookie 决定，不回传。
+				// 社交访客的身份由会话/统一访客 cookie 决定，不回传；匿名访客照常回传。
 				remembered:
-					event.locals.user || event.locals.visitor
+					event.locals.user || socialVisitorOf(event)
 						? undefined
 						: (readRememberedIdentity(event) ?? undefined),
 				maxLength: cfg.num('maxLength', 500),
@@ -614,10 +612,7 @@ export function registerPublicApi(d: ApiDeps): void {
 			const slice = (result.data as CommentRow[]).slice(after, after + limit);
 			const total = typeof result.meta.total === 'number' ? result.meta.total : result.data.length;
 			const user = event.locals.user;
-			const visitorId = computeVisitorId(
-				getRequestIp(event),
-				event.request.headers.get('user-agent') ?? undefined
-			);
+			const visitorId = visitorKeyOf(event);
 			const isMine = (row: CommentRow) =>
 				user ? row.userId === user.id : row.visitorId === visitorId;
 			const userBy = await info.resolveUsers(slice);
