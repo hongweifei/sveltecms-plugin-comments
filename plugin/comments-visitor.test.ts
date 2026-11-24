@@ -5,7 +5,7 @@ import { setup, getEndpoint, mockEvent, submitBody, commentRow, VISITOR, BASE, E
  * 框架 0.3 统一访客适配：
  * - 匿名访客（locals.visitor 只有 id）仍按游客处理，身份三字段照常消费；
  * - 社交访客（带 provider）昵称/头像由框架签名 cookie 认定，邮箱不落；
- * - visitor_id 列统一用框架访客 id（无 cookie 的直连接口回落 IP+UA 哈希）；
+ * - visitor_id 列统一用框架访客 id（无 cookie 的直连请求用一次性随机标识）；
  * - 隐私主体登记按同一 id 导出/删除本人数据。
  */
 describe('统一访客身份', () => {
@@ -51,7 +51,7 @@ describe('统一访客身份', () => {
 		expect(created.visitorId).toBe(VISITOR);
 	});
 
-	it('无访客 cookie（headless 直连）：回落 IP+UA 哈希，依旧可评论', async () => {
+	it('无访客 cookie（headless 直连）：用一次性随机标识，依旧可评论', async () => {
 		const built = await setup();
 		const submit = getEndpoint(built, 'POST', '/submit');
 		const res = await submit.handler(
@@ -63,10 +63,21 @@ describe('统一访客身份', () => {
 			})
 		);
 		expect(res.status).toBe(200);
-		const created = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
-		expect(typeof created.visitorId).toBe('string');
-		expect(created.visitorId).not.toBe(VISITOR);
-		expect(String(created.visitorId).length).toBeGreaterThan(20);
+		const first = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
+		expect(String(first.visitorId)).toMatch(/^[0-9a-f-]{36}$/);
+		expect(first.visitorId).not.toBe(VISITOR);
+
+		// 无 cookie 的两次请求互不归人（不做跨请求身份推断）
+		await submit.handler(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/submit`,
+				body: submitBody(),
+				visitor: null
+			})
+		);
+		const second = built.dbCreate.mock.calls.at(-1)![1] as Record<string, unknown>;
+		expect(second.visitorId).not.toBe(first.visitorId);
 	});
 
 	it('/list：匿名访客回传身份记忆与本人待审，社交访客不回传', async () => {

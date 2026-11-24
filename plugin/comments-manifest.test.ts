@@ -4,7 +4,7 @@ import { plugin, setup, type RegisteredEndpoint } from './comments-test-utils';
 describe('comments plugin manifest', () => {
 	it('declares official plugin identity with host engine gate and user-table permission', () => {
 		expect(plugin.manifest.name).toBe('comments');
-		expect(plugin.manifest.version).toBe('0.4.1');
+		expect(plugin.manifest.version).toBe('0.4.2');
 		// 框架 0.3 起插件的基线 API（migrations / service / capability）
 		expect(plugin.manifest.engines).toEqual({ cms: '^0.3' });
 		// 自定义事件显式声明（消费方据此订阅；插件默认只能发自身命名空间）

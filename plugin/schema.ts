@@ -59,9 +59,9 @@ export const comments = sqliteTable(
 		os: text('os'),
 		browser: text('browser'),
 		region: text('region'),
-		// 访客标识：框架统一访客 id（cms_visitor 签名 cookie 的稳定 UUID，一年）；
-		// 无浏览器 cookie 的直连调用回落 IP+UA 哈希。点赞去重、本人待审可见、
-		// 删除/编辑归属与隐私导出/删除共用这一个键。
+		// 访客标识：框架统一访客 id（cms_visitor 签名 cookie 的稳定 UUID，一年）。
+		// 点赞去重、本人待审可见、删除/编辑归属与隐私导出/删除共用这一个键；
+		// 无 cookie 的直连请求用一次性随机标识记录。
 		visitorId: text('visitor_id').notNull()
 	},
 	(table) => [

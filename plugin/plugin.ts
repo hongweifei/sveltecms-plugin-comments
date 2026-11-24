@@ -79,7 +79,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.4.1',
+		version: '0.4.2',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客身份与设备环境/地区、微信登录身份、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, guest identity with device/region, WeChat sign-in identity, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
@@ -491,8 +491,7 @@ const plugin: Plugin = {
 		// 隐私登记（框架 0.3 统一访客）：访客凭自己的统一访客 cookie 在
 		// /api/v1/privacy/export|erase 自助导出或删除「按访客存的那份数据」。
 		// 评论/点赞的 visitor_id 就是框架访客 id（见 visitor.ts 的 visitorKeyOf），
-		// 故按 id 精确命中；登录账号写的评论挂在 userId 上（账号数据，不在此列），
-		// 历史行存的是旧 IP+UA 哈希，无法映射到访客 id，不在本登记范围。
+		// 故按 id 精确命中；登录账号写的评论挂在 userId 上（账号数据，不在此列）。
 		ctx.privacy.register({
 			key: 'comments',
 			label: '评论与点赞',
