@@ -52,7 +52,7 @@
 	// 文案由插件注册、经 /api/v1/i18n/comments 下发（与服务端同一份，两端共用）；
 	// 取词失败时回退 key 本身，不阻塞渲染。key 用 settings_ 前缀避免与前台同名冲突
 	let messages = $state<Record<string, string>>({});
-	const tr = $derived((key: string) => messages[key] ?? key);
+	const tr = (key: string) => messages[key] ?? key;
 	const t = $derived({
 		title: tr('settings_title'),
 		sub: tr('settings_sub'),
@@ -175,7 +175,7 @@
 
 <style>
 	.cs-settings {
-		border: 1px solid var(--color-border);
+		border: 1px solid var(--color-line);
 		border-radius: var(--radius-lg);
 		padding: 0.875rem 1rem;
 		margin-top: 0.25rem;
@@ -189,11 +189,11 @@
 	.cs-settings-title {
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: var(--color-text);
+		color: var(--color-fg);
 	}
 	.cs-settings-sub {
 		font-size: 0.6875rem;
-		color: var(--color-text-secondary);
+		color: var(--color-fg-muted);
 	}
 	.cs-settings-row {
 		display: flex;
@@ -210,44 +210,50 @@
 	}
 	.cs-settings-label {
 		font-size: 0.8125rem;
-		color: var(--color-text);
+		color: var(--color-fg);
 	}
 	.cs-settings-hint {
 		font-size: 0.6875rem;
-		color: var(--color-text-secondary);
+		color: var(--color-fg-muted);
 	}
 	.cs-switch {
 		position: relative;
 		display: inline-flex;
 		flex-shrink: 0;
-		width: 2.25rem;
-		height: 1.25rem;
+		width: 3rem;
+		height: 1.625rem;
 		align-items: center;
 		border-radius: 9999px;
-		background: var(--color-bg-tertiary);
-		box-shadow: inset 0 0 0 1px var(--color-border);
+		background: var(--color-surface-strong);
+		box-shadow: inset 0 0 0 1px var(--color-line);
 		cursor: pointer;
-		transition: background 0.15s ease;
+		transition:
+			background 0.15s ease,
+			box-shadow 0.15s ease;
 	}
 	.cs-switch:disabled {
 		opacity: 0.6;
 		cursor: default;
 	}
+	.cs-switch:focus-visible {
+		outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+		outline-offset: 2px;
+	}
 	.cs-switch-on {
-		background: var(--color-primary);
+		background: var(--color-accent);
 		box-shadow: none;
 	}
 	.cs-knob {
 		position: absolute;
-		left: 0.125rem;
-		width: 1rem;
-		height: 1rem;
+		left: 0.1875rem;
+		width: 1.25rem;
+		height: 1.25rem;
 		border-radius: 9999px;
 		background: #fff;
-		box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
 		transition: transform 0.15s ease;
 	}
 	.cs-knob-on {
-		transform: translateX(1rem);
+		transform: translateX(1.375rem);
 	}
 </style>
