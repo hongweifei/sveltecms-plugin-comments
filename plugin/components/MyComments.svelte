@@ -344,9 +344,15 @@
 	}
 
 	.my-count {
+		display: inline-flex;
+		min-width: 1.25rem;
+		height: 1.25rem;
+		align-items: center;
+		justify-content: center;
 		padding: 0 var(--space-1, 0.25rem);
 		font-size: var(--text-xs, 0.75rem);
-		line-height: 1.5;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
 		color: #fff;
 		background: var(--color-primary);
 		border-radius: 999px;
@@ -367,6 +373,26 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md, 0.5rem);
 		box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+		scrollbar-width: thin;
+		scrollbar-color: color-mix(in srgb, var(--color-text-muted) 35%, transparent) transparent;
+	}
+
+	.my-panel::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+
+	.my-panel::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.my-panel::-webkit-scrollbar-thumb {
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-text-muted) 35%, transparent);
+	}
+
+	.my-panel::-webkit-scrollbar-thumb:hover {
+		background: color-mix(in srgb, var(--color-text-muted) 55%, transparent);
 	}
 
 	.my-hint {
@@ -509,10 +535,11 @@
 	}
 
 	/* 窄屏：面板改成静态块，跟着标题下方铺开，避免浮层超出视口 */
-	@media (max-width: 640px) {
+	@media (max-width: 760px) {
 		.my-comments {
 			display: flex;
 			width: 100%;
+			flex: 1 0 100%;
 			flex-direction: column;
 			align-items: flex-end;
 		}
