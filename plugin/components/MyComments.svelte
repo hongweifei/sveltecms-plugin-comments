@@ -534,21 +534,18 @@
 		text-align: center;
 	}
 
-	/* 窄屏：面板改成静态块，跟着标题下方铺开，避免浮层超出视口 */
+	/* 窄屏：面板改为底部浮层，左右留边，避免被评论标题行挤到视口外 */
 	@media (max-width: 760px) {
-		.my-comments {
-			display: flex;
-			width: 100%;
-			flex: 1 0 100%;
-			flex-direction: column;
-			align-items: flex-end;
-		}
 		.my-panel {
-			position: static;
-			width: 100%;
+			position: fixed;
+			top: auto;
+			right: 1rem;
+			bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+			left: 1rem;
+			z-index: 40;
+			width: auto;
 			max-height: 70vh;
-			margin-top: var(--space-2, 0.5rem);
-			align-self: stretch;
+			margin-top: 0;
 		}
 	}
 </style>
