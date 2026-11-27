@@ -26,9 +26,9 @@ import type { CommentsCountService } from './service-count';
  *   在根评论下一层（回复内容带「回复 @目标」前缀）；
  * - 访客身份：昵称（可选）/邮箱（必填，仅存储，对外只输出 gravatar 哈希）/
  *   主页（可选），服务端以 HttpOnly cookie 记住填写者（回访预填）；
- * - 访客账号渠道（框架 visitor_accounts / visitor_bindings）：微信 / QQ 授权登录
- *   挂到同一个访客 id 上，身份条列出已绑定渠道、未绑定渠道走 ?bind=1 绑定；
- *   解绑与两个账号的合并由框架账号页处理，合并只并身份、不迁历史评论；
+ * - 访客身份（better-auth 匿名会话）：第三方登录把渠道挂到同一个 user.id，
+ *   身份条列出已绑定渠道、未绑定渠道走 linkSocial 绑定；解绑与两个账号的
+ *   合并由框架账号页处理，合并只并身份、不迁历史评论；
  * - 环境信息（twikoo 模式）：服务端从 UA 解析系统/浏览器、从 IP 异步解析
  *   归属地（best-effort，失败留空）；
  * - 互动：点赞（comment_likes 按 visitor 去重）、举报（达阈值自动回待审）、
@@ -82,7 +82,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.4.9',
+		version: '0.5.0',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客账号与微信/QQ 渠道绑定、设备环境/地区、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, visitor account with WeChat/QQ channel binding, device/region, own pending visibility, admin replies and keyword blacklist (reference official plugin)'
@@ -94,10 +94,11 @@ const plugin: Plugin = {
 		// 与审计核对（消费方据此订阅）。
 		emits: ['comments:submitted'],
 		// SEC-5 声明式系统表权限（只读）：user 表用于登录用户头像/昵称实时反查；
+		// account 表用于识别已绑定第三方渠道的社交访客（昵称/头像与身份字段隐藏）；
 		// pages 表用于路径白名单 ↔ 记录换算（page-paths 桥：/list /count /submit
 		// 的 path 绑定解析内容级设置 + /admin/eligible 判定）；roles 表用于官方标
 		// 的身份判定（canPostOfficial：adminAccess 或 officialRoles 白名单，60s 缓存）。
-		permissions: { readSystemTables: ['user', 'pages', 'roles'] },
+		permissions: { readSystemTables: ['user', 'account', 'pages', 'roles'] },
 		// 管理端插件页渲染 boolean 为「开 / 关」。配置值一律以字符串落库
 		// （管理端表单一律字符串化），读取时布尔与字符串两种形态都认。
 		// C3：label / placeholder 为 I18nText（{zh, en}），管理端按当前语言渲染

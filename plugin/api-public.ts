@@ -5,6 +5,7 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
+import { isRealUser } from '#lib/cms/auth/user-kind.ts';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import {
@@ -113,8 +114,8 @@ export function registerPublicApi(d: ApiDeps): void {
 				// 身份来源：CMS 登录用户取账号；社交访客取框架统一访客里已验签的
 				// 昵称/头像（客户端传的昵称/邮箱不作数）；匿名访客仍按游客处理，
 				// 照常填写昵称与邮箱。
-				const user = event.locals.user;
-				const visitor = socialVisitorOf(event);
+				const user = isRealUser(event.locals.user) ? event.locals.user : null;
+				const visitor = await socialVisitorOf(event, ctx);
 				const result = validateSubmitInput(parsed.body, {
 					skipIdentity: Boolean(user || visitor),
 					// B2b：站点开启「游客邮箱可留空」时空值放行（登录路径本就 skipIdentity 不消费）
@@ -408,8 +409,9 @@ export function registerPublicApi(d: ApiDeps): void {
 				limit: pageSize
 			});
 
-			const user = event.locals.user;
+			const user = isRealUser(event.locals.user) ? event.locals.user : null;
 			const visitorId = visitorKeyOf(event);
+			const socialVisitor = await socialVisitorOf(event, ctx);
 			// B1：登录用户一律按 userId 判定「本人」——同 NAT/UA 的游客不再
 			// 互相顶号；游客按统一访客 id（其待审本人可见的既有机制）
 			const isMine = (row: CommentRow) =>
@@ -555,15 +557,15 @@ export function registerPublicApi(d: ApiDeps): void {
 				guestEmailOptional: cfg.bool('guestEmailOptional', false),
 				// 官方标（可选）：当前登录用户具备官方身份时前端才显示「官方」勾选框
 				// （服务端 canPostOfficial 权威判定，无身份拿到也是 false，且 /submit 会复核）
-				canOfficial: await canPostOfficial(event.locals.user),
+				canOfficial: await canPostOfficial(user),
 				// 登录态下发：本应用 better-auth 端点不走 HTTP（/api/auth/* 410），
 				// 组件无法自行探测会话——viewer 非空即登录，前端隐藏身份输入，
 				// /submit 服务端按会话落身份（与此处同源，伪造无意义）
-				viewer: event.locals.user ? { name: event.locals.user.name ?? '' } : null,
+				viewer: user ? { name: user.name ?? '' } : null,
 				// 回访免重填：上次评论记住的游客身份（HttpOnly cookie）。登录用户与
 				// 社交访客的身份由会话/统一访客 cookie 决定，不回传；匿名访客照常回传。
 				remembered:
-					event.locals.user || socialVisitorOf(event)
+					user || socialVisitor
 						? undefined
 						: (readRememberedIdentity(event) ?? undefined),
 				maxLength: cfg.num('maxLength', 500),
@@ -611,7 +613,7 @@ export function registerPublicApi(d: ApiDeps): void {
 			});
 			const slice = (result.data as CommentRow[]).slice(after, after + limit);
 			const total = typeof result.meta.total === 'number' ? result.meta.total : result.data.length;
-			const user = event.locals.user;
+			const user = isRealUser(event.locals.user) ? event.locals.user : null;
 			const visitorId = visitorKeyOf(event);
 			const isMine = (row: CommentRow) =>
 				user ? row.userId === user.id : row.visitorId === visitorId;

@@ -4,6 +4,7 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
+import { isRealUser } from '#lib/cms/auth/user-kind.ts';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { json, readJson, type CommentRow } from './helpers';
 import {
@@ -41,7 +42,7 @@ export function registerInteractionApi(d: ApiDeps): void {
 			const comment = await ctx.db.findById('comments', id);
 			if (!comment || comment.status !== 'approved') return json({ error: 'Not found' }, 404);
 
-			const user = event.locals.user;
+			const user = isRealUser(event.locals.user) ? event.locals.user : null;
 			const visitorId = visitorKeyOf(event);
 			const likeFilter: Record<string, unknown> = user
 				? { commentId: id, userId: user.id }
@@ -125,7 +126,7 @@ export function registerInteractionApi(d: ApiDeps): void {
 			const comment = (await ctx.db.findById('comments', id)) as CommentRow | null;
 			if (!comment) return json({ error: 'Not found' }, 404);
 
-			const user = event.locals.user;
+			const user = isRealUser(event.locals.user) ? event.locals.user : null;
 			const visitorId = visitorKeyOf(event);
 			const ownByUser = user && comment.userId === user.id;
 			// 访客按统一访客 id 管理自己的评论（框架签名 cookie，服务端认定）：
@@ -202,7 +203,7 @@ export function registerInteractionApi(d: ApiDeps): void {
 			const comment = await ctx.db.findById('comments', id);
 			if (!comment) return json({ error: 'Not found' }, 404);
 
-			const user = event.locals.user;
+			const user = isRealUser(event.locals.user) ? event.locals.user : null;
 			const visitorId = visitorKeyOf(event);
 			const ownByUser = user && comment.userId === user.id;
 			// 访客按统一访客 id 管理自己的评论：与登录用户同一权限面。已发布评论
@@ -237,7 +238,7 @@ export function registerInteractionApi(d: ApiDeps): void {
 			const rl = await mineLimiter.check({ ip: getRequestIp(event) });
 			if (!rl.allowed) return json({ error: 'Too many requests' }, 429);
 
-			const user = event.locals.user;
+			const user = isRealUser(event.locals.user) ? event.locals.user : null;
 			const visitorId = visitorKeyOf(event);
 			const { page, pageSize } = clampPaging(
 				event.url.searchParams.get('page'),

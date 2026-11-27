@@ -263,10 +263,10 @@ export function mockEvent(opts: {
 		roles?: string[];
 	} | null;
 	/**
-	 * 前台访客身份（框架统一访客 locals.visitor）：
-	 * - 不传 = 匿名访客（只有稳定 id，对应框架首次访问即发放的 cms_visitor）
+	 * 前台访客身份（框架 better-auth 匿名会话）：
+	 * - 不传 = 匿名访客（只有稳定 id，对应框架首次交互时创建的匿名会话）
 	 * - 传 provider/nickname = 社交登录访客（微信/QQ），id 仍用同一个 VISITOR
-	 * - 显式 null = 无访客 cookie（headless / API 直连，用一次性随机标识记录）
+	 * - 显式 null = 无会话（headless / API 直连，用一次性随机标识记录）
 	 */
 	visitor?: {
 		provider?: 'wechat' | 'qq';

@@ -12,7 +12,7 @@
 	字母色块）、访客身份三字段（昵称可选/邮箱必填/主页可选，服务端 HttpOnly
 	cookie 记住、回访预填）、点赞（服务端按访客幂等）、举报、删除自己的评论、
 	本人待审即时可见、设备环境与地区展示（服务端解析）、官方回复徽章、
-	访客账号渠道（已绑定微信/QQ 标签 + 未绑定渠道的 ?bind=1 绑定入口）。
+	访客身份（better-auth 匿名会话；第三方登录后身份条列出已绑定渠道并提供绑定入口）。
 
 	样式遵循默认主题设计系统（CSS 变量 + scoped style + 全局 .btn 类），
 	状态色在本组件内定义并随 .dark 适配（主题未提供 danger/success 令牌）。
@@ -21,6 +21,7 @@
 	import { onMount } from 'svelte';
 	import { getCsrfToken } from '#lib/common/utils/csrf.ts';
 	import { loadPluginMessages } from '#lib/cms/utils/i18n-client.ts';
+	import { authClient } from '#lib/cms/auth/client.ts';
 	import {
 		MAX_AUTHOR_NAME_LENGTH,
 		MAX_EMAIL_LENGTH,
@@ -32,10 +33,10 @@
 	} from '../shared';
 	import { formatRelativeTime, letterOf, hueOf } from '../client/format';
 	import {
-		visitorBindUrl,
 		visitorChannelStateOf,
-		type VisitorAccountPayload,
-		type VisitorChannelState
+		type IdentityStatePayload,
+		type VisitorChannelState,
+		type VisitorProviderEntry
 	} from '../visitor-channels';
 	import CaptchaField from './CaptchaField.svelte';
 	import EmojiPicker from './EmojiPicker.svelte';
@@ -74,13 +75,12 @@
 	/** better-auth 登录态：非空时身份三字段隐藏，服务端按账号落库 */
 	let account = $state<{ name: string } | null>(null);
 	/**
-	 * 访客身份（框架 /api/auth/visitor/session，支持微信与 QQ）：providers 控制
-	 * 入口显隐，visitor 非空时隐藏身份三字段——昵称与头像来自签名 cookie，
-	 * 服务端认定。已登录后再取一次账号渠道（/api/auth/visitor/account）：
-	 * 一个访客 id 可挂微信与 QQ 两个渠道，没挂上的渠道给「绑定」入口，
+	 * 访客身份（better-auth 匿名会话）：providers 控制入口显隐，社交登录后
+	 * channels 非空时隐藏身份三字段——昵称与头像来自会话，服务端认定。
+	 * 已绑定渠道挂同一个 user.id，未挂上的渠道走 linkSocial 绑定，
 	 * 避免用户换个渠道登录时被框架当成切换账号、评论拆成两份。
 	 */
-	let visitorProviders = $state<{ id: string; label: string; start: string }[]>([]);
+	let visitorProviders = $state<VisitorProviderEntry[]>([]);
 	let visitor = $state<{ provider: string; nickname: string; avatar: string | null } | null>(null);
 	/** 已登录时取到的账号渠道；null = 未取到（不展示明细也不引导绑定） */
 	let channels = $state<VisitorChannelState | null>(null);
@@ -234,53 +234,54 @@
 	}
 
 	/**
-	 * 访客身份探测：框架统一访客接口（`/api/auth/visitor/session`）下发可用提供方
-	 * 与社交登录态；未配置提供方时不显示入口，已登录时用昵称回填表单。
-	 * 失败静默——评论本身不依赖这条链路。
+	 * 访客身份：`/api/auth/identity/state` 下发会话、可用渠道与已绑定渠道。
+	 * 有渠道绑定时才是社交登录访客（匿名访客只有会话、没有渠道），昵称与头像
+	 * 由 better-auth 会话提供；登录/绑定直接走 authClient，不再拼授权地址。
 	 */
 	async function loadVisitor() {
 		try {
-			const res = await fetch('/api/auth/visitor/session', {
-				headers: { accept: 'application/json' }
+			const res = await fetch('/api/auth/identity/state', {
+				headers: { accept: 'application/json' },
+				cache: 'no-store'
 			});
 			if (!res.ok) return;
-			const body = (await res.json()) as {
-				enabled?: boolean;
-				providers?: { id: string; label: string; start: string }[];
-				authenticated?: boolean;
-				visitor?: { provider?: string; nickname?: string; avatar?: string | null } | null;
-			};
+			const body = (await res.json()) as IdentityStatePayload;
 			visitorProviders = body.providers ?? [];
-			if (body.authenticated && body.visitor?.nickname) {
-				visitor = {
-					provider: body.visitor.provider ?? '',
-					nickname: body.visitor.nickname,
-					avatar: body.visitor.avatar ?? null
-				};
-				authorName = body.visitor.nickname;
-				// 渠道明细与身份并行取（同一次探测，不额外等待登录链路）
-				void loadChannels();
-			}
+			channels = visitorChannelStateOf(body, visitorProviders);
+			if (body.authenticated || (body.bindings?.length ?? 0) === 0) return;
+			const session = await authClient.getSession();
+			const user = session?.data?.user;
+			const provider = body.bindings?.[0]?.provider ?? '';
+			const nickname = user?.name || providerLabel(provider);
+			visitor = { provider, nickname, avatar: user?.image ?? null };
+			authorName = nickname;
 		} catch {
 			/* 增强能力失败不影响匿名评论 */
 		}
 	}
 
-	/**
-	 * 账号渠道：已挂在本访客账号下的微信 / QQ。读取失败只是少一块增强信息——
-	 * 身份、评论、点赞都照常；此时不展示待绑定渠道，避免误把当前渠道再绑一遍。
-	 */
-	async function loadChannels() {
+	async function beginLogin(provider: string) {
 		try {
-			const res = await fetch('/api/auth/visitor/account', {
-				headers: { accept: 'application/json' },
-				cache: 'no-store'
-			});
-			if (!res.ok) return;
-			const body = (await res.json()) as VisitorAccountPayload;
-			channels = visitorChannelStateOf(body, visitorProviders, visitor?.provider ?? null);
+			await authClient.signIn.social({ provider, callbackURL: returnTo() });
 		} catch {
-			/* 账号目录失败按「渠道未知」处理 */
+			flash = t.failed;
+		}
+	}
+
+	async function beginBind(provider: string) {
+		try {
+			await authClient.linkSocial({ provider, callbackURL: returnTo() });
+		} catch {
+			flash = t.failed;
+		}
+	}
+
+	async function logout() {
+		try {
+			await authClient.signOut();
+			location.reload();
+		} catch {
+			flash = t.failed;
 		}
 	}
 
@@ -868,11 +869,11 @@
 		mounted = true;
 		// 取插件文案（zh/en 由服务端按当前语言下发，组件不再自带双语）
 		loadPluginMessages('comments').then((m) => (messages = m));
-		// 访客身份与列表并行探测：框架未配置微信/QQ 时入口自动隐藏
-		loadVisitor();
-		// 登录态不再于此探测：本应用 better-auth 端点不走 HTTP（/api/auth/*
-		// 一律 410 Gone），由 /list 响应 viewer 字段随数据下发（load 内接线）
-		load();
+		// 先确认身份，再拉列表：/list 的本人待审合并依赖当前会话
+		void (async () => {
+			await loadVisitor();
+			await load();
+		})();
 	});
 </script>
 
@@ -897,12 +898,9 @@
 			<p class="sc-comments-note">
 				{t.loginToComment}
 				{#each visitorProviders as provider (provider.id)}
-					<a
-						class="wechat-link"
-						href={`${provider.start}?returnTo=${encodeURIComponent(returnTo())}`}
-					>
+					<button type="button" class="wechat-link" onclick={() => beginLogin(provider.id)}>
 						{t.visitorLogin.replace('{provider}', providerLabel(provider.id))}
-					</a>
+					</button>
 				{/each}
 			</p>
 		{:else if contentSettings?.requireLogin && !account && !visitor}
@@ -953,33 +951,35 @@
 								{providerLabel(binding.provider)}
 							</span>
 						{/each}
-						<!-- 未绑定渠道：走 bind=1 挂到当前账号；直接登录会被框架当成切换账号 -->
-						{#each (channels?.available ?? []).filter((provider) => provider.start) as provider (provider.id)}
-							{@const bindUrl = visitorBindUrl(provider.start, returnTo())}
-							<a class="wechat-link" href={bindUrl} title={provider.label}>
+						<!-- 未绑定渠道：走 linkSocial 挂到当前账号；直接登录会被框架当成切换账号 -->
+						{#each channels?.available ?? [] as provider (provider.id)}
+							<button
+								type="button"
+								class="wechat-link"
+								title={provider.label}
+								onclick={() => beginBind(provider.id)}
+							>
 								{t.visitorBind.replace('{provider}', providerLabel(provider.id))}
-							</a>
+							</button>
 						{/each}
 						<!-- 账号页链接只在账号端点可用时出现：更早的框架版本没有该页面 -->
 						{#if channels}
 							<a class="wechat-link is-quiet" href="/account">{t.visitorAccount}</a>
 						{/if}
-						<a
-							class="wechat-link"
-							href={`/api/auth/visitor/logout?returnTo=${encodeURIComponent(returnTo())}`}
-						>
+						<button type="button" class="wechat-link" onclick={logout}>
 							{t.visitorLogout}
-						</a>
+						</button>
 					</div>
 				{:else if visitorProviders.length > 0 && !account}
 					<div class="wechat-identity">
 						{#each visitorProviders as provider (provider.id)}
-							<a
+							<button
+								type="button"
 								class="wechat-link"
-								href={`${provider.start}?returnTo=${encodeURIComponent(returnTo())}`}
+								onclick={() => beginLogin(provider.id)}
 							>
 								{t.visitorLogin.replace('{provider}', providerLabel(provider.id))}
-							</a>
+							</button>
 						{/each}
 					</div>
 				{/if}
@@ -1475,9 +1475,14 @@
 		object-fit: cover;
 	}
 	.wechat-link {
+		padding: 0;
+		border: 0;
+		background: none;
 		color: #07c160;
-		text-decoration: none;
+		font: inherit;
 		font-weight: 500;
+		text-decoration: none;
+		cursor: pointer;
 	}
 	.wechat-link:hover {
 		text-decoration: underline;

@@ -29,12 +29,12 @@ export const messages: Record<string, Record<string, string>> = {
 		en: 'Optional: why are you reporting this?'
 	},
 	websiteLabel: { zh: '主页（可选）', en: 'Website (optional)' },
-	// 访客身份（框架 /api/auth/visitor/*）：登录后隐藏身份三字段，昵称与头像
+	// 访客身份（框架 better-auth 匿名会话）：登录后隐藏身份三字段，昵称与头像
 	// 由签名 cookie 提供；徽章标在评论作者名后。
 	visitorLogin: { zh: '使用{provider}登录', en: 'Sign in with {provider}' },
 	visitorAs: { zh: '以 {name} 身份评论', en: 'Commenting as {name}' },
 	visitorLogout: { zh: '退出', en: 'Sign out' },
-	// 访客账号渠道（框架 visitor_accounts / visitor_bindings）：已登录身份条把
+	// 访客账号渠道（框架 account 表）：已登录身份条把
 	// 已绑定渠道列成标签，未绑定渠道给「绑定」入口（start 地址 + ?bind=1）；
 	// 解绑与两账号合并只发生在框架账号页，插件只给入口。
 	visitorBind: { zh: '绑定{provider}', en: 'Link {provider}' },
