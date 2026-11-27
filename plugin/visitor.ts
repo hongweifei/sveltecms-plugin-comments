@@ -26,6 +26,29 @@ interface VisitorLike {
 	provider?: string;
 }
 
+interface AccountUserLike {
+	id: string;
+	name?: string | null;
+	email?: string | null;
+	isAnonymous?: boolean | null;
+}
+
+/**
+ * 真实后台账号：匿名会话不算。
+ *
+ * better-auth 的匿名用户按约定使用 `@visitor.invalid` 邮箱与「访客 xxxx」名称；
+ * 旧会话行可能没有 `isAnonymous` 列，用邮箱/名称兜底，避免把匿名访客当成登录账号。
+ */
+export function realAccountOf(event: RequestEvent): AccountUserLike | null {
+	const user = event.locals.user as AccountUserLike | null | undefined;
+	if (!user) return null;
+	if (user.isAnonymous === true) return null;
+	const email = typeof user.email === 'string' ? user.email : '';
+	const name = typeof user.name === 'string' ? user.name : '';
+	if (email.endsWith('@visitor.invalid') || name.startsWith('访客 ')) return null;
+	return user;
+}
+
 /** 访客标识：统一访客 id；无会话的直连请求用一次性随机标识 */
 export function visitorKeyOf(event: RequestEvent): string {
 	const id = event.locals.visitor?.id;

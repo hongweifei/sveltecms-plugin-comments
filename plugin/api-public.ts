@@ -5,7 +5,6 @@
  */
 
 import { type RequestEvent } from '@sveltejs/kit';
-import { isRealUser } from '#lib/cms/auth/user-kind.ts';
 import { getRequestIp } from '#lib/common/server/rate-limit.ts';
 import { userAvatarUrl } from '#lib/cms/utils/user-avatar.ts';
 import {
@@ -27,7 +26,7 @@ import {
 } from './validate';
 import { readRememberedIdentity, rememberIdentity } from './identity-cookie';
 import type { CommentBinding } from './validate';
-import { socialVisitorOf, visitorKeyOf } from './visitor';
+import { realAccountOf, socialVisitorOf, visitorKeyOf } from './visitor';
 import type { ApiDeps } from './deps';
 
 export function registerPublicApi(d: ApiDeps): void {
@@ -114,7 +113,7 @@ export function registerPublicApi(d: ApiDeps): void {
 				// 身份来源：CMS 登录用户取账号；社交访客取框架统一访客里已验签的
 				// 昵称/头像（客户端传的昵称/邮箱不作数）；匿名访客仍按游客处理，
 				// 照常填写昵称与邮箱。
-				const user = isRealUser(event.locals.user) ? event.locals.user : null;
+				const user = realAccountOf(event);
 				const visitor = await socialVisitorOf(event, ctx);
 				const result = validateSubmitInput(parsed.body, {
 					skipIdentity: Boolean(user || visitor),
@@ -409,7 +408,7 @@ export function registerPublicApi(d: ApiDeps): void {
 				limit: pageSize
 			});
 
-			const user = isRealUser(event.locals.user) ? event.locals.user : null;
+			const user = realAccountOf(event);
 			const visitorId = visitorKeyOf(event);
 			const socialVisitor = await socialVisitorOf(event, ctx);
 			// B1：登录用户一律按 userId 判定「本人」——同 NAT/UA 的游客不再
@@ -613,7 +612,7 @@ export function registerPublicApi(d: ApiDeps): void {
 			});
 			const slice = (result.data as CommentRow[]).slice(after, after + limit);
 			const total = typeof result.meta.total === 'number' ? result.meta.total : result.data.length;
-			const user = isRealUser(event.locals.user) ? event.locals.user : null;
+			const user = realAccountOf(event);
 			const visitorId = visitorKeyOf(event);
 			const isMine = (row: CommentRow) =>
 				user ? row.userId === user.id : row.visitorId === visitorId;
