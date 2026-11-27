@@ -358,9 +358,10 @@
 		top: calc(100% + 6px);
 		right: 0;
 		z-index: 20;
-		width: min(360px, 92cqw, calc(100vw - 2rem));
+		width: min(360px, calc(100vw - 2rem));
 		max-height: 60vh;
-		overflow: auto;
+		overflow-x: hidden;
+		overflow-y: auto;
 		padding: var(--space-3, 0.75rem);
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -387,12 +388,14 @@
 	.my-list {
 		display: grid;
 		gap: var(--space-2, 0.5rem);
+		min-width: 0;
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
 
 	.my-item {
+		min-width: 0;
 		padding: var(--space-2, 0.5rem);
 		border: 1px solid var(--color-border-light);
 		border-radius: var(--radius-sm, 0.375rem);
@@ -403,6 +406,7 @@
 		flex-wrap: wrap;
 		gap: var(--space-2, 0.5rem);
 		align-items: center;
+		min-width: 0;
 		font-size: var(--text-xs, 0.75rem);
 		color: var(--color-text-muted);
 	}
@@ -422,6 +426,8 @@
 	}
 
 	.my-path {
+		flex: 1 1 8rem;
+		min-width: 0;
 		max-width: 100%;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -435,6 +441,7 @@
 	}
 
 	.my-time {
+		flex: 0 0 auto;
 		margin-left: auto;
 		white-space: nowrap;
 	}
@@ -501,17 +508,20 @@
 		text-align: center;
 	}
 
-	/* 窄容器：面板改成静态块，跟着标题下方铺开，避免浮层遮住表单 */
-	@container comments (max-width: 480px) {
+	/* 窄屏：面板改成静态块，跟着标题下方铺开，避免浮层超出视口 */
+	@media (max-width: 640px) {
 		.my-comments {
-			display: block;
+			display: flex;
 			width: 100%;
+			flex-direction: column;
+			align-items: flex-end;
 		}
 		.my-panel {
 			position: static;
 			width: 100%;
-			max-height: none;
+			max-height: 70vh;
 			margin-top: var(--space-2, 0.5rem);
+			align-self: stretch;
 		}
 	}
 </style>
