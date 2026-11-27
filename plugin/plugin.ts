@@ -82,7 +82,7 @@ const SERVER_OWNED_FIELDS = [
 const plugin: Plugin = {
 	manifest: {
 		name: 'comments',
-		version: '0.4.4',
+		version: '0.4.6',
 		description: {
 			zh: '页面/内容项评论：无限嵌套回复（root_id 锁定根评论）、分页、点赞、举报、gravatar 头像、访客账号与微信/QQ 渠道绑定、设备环境/地区、本人待审可见、管理员回复与关键词黑名单（官方插件范例）',
 			en: 'Page/content comments: infinitely nested replies (root_id anchors the thread), pagination, likes, reports, gravatar avatars, visitor account with WeChat/QQ channel binding, device/region, own pending visibility, admin replies and keyword blacklist (reference official plugin)'

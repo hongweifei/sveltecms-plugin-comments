@@ -56,6 +56,8 @@
 	});
 
 	let open = $state(false);
+	let rootEl: HTMLDivElement;
+	let toggleEl: HTMLButtonElement;
 	let loaded = $state(false);
 	let loading = $state(false);
 	let failed = $state(false);
@@ -68,8 +70,21 @@
 	let flash = $state('');
 
 	onMount(() => {
-		loadPluginMessages('comments').then((m) => (messages = m));
+		void ensureMessages();
 	});
+
+	/** 词条接口偶发失败时重试，避免面板退化为 key 名 */
+	async function ensureMessages() {
+		if (Object.keys(messages).length > 0) return;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const loadedMessages = await loadPluginMessages('comments');
+			if (Object.keys(loadedMessages).length > 0) {
+				messages = loadedMessages;
+				return;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 300));
+		}
+	}
 
 	function timeOf(iso: string): string {
 		return formatRelativeTime(iso, {
@@ -112,8 +127,26 @@
 	}
 
 	async function toggle() {
+		if (!open) await ensureMessages();
 		open = !open;
 		if (open && !loaded) await load(1);
+	}
+
+	function close() {
+		open = false;
+	}
+
+	function onPointerDown(event: PointerEvent) {
+		if (!open) return;
+		const target = event.target;
+		if (target instanceof Node && rootEl?.contains(target)) return;
+		close();
+	}
+
+	function onKeydown(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || !open) return;
+		close();
+		toggleEl?.focus();
 	}
 
 	function csrfHeaders(): Record<string, string> {
@@ -184,12 +217,16 @@
 	}
 </script>
 
-<div class="my-comments">
+<svelte:window onpointerdown={onPointerDown} onkeydown={onKeydown} />
+
+<div class="my-comments" bind:this={rootEl}>
 	<button
 		type="button"
 		class="my-toggle"
 		class:is-open={open}
+		bind:this={toggleEl}
 		aria-expanded={open}
+		aria-controls="my-comments-panel"
 		onclick={toggle}
 	>
 		{t.myComments}
@@ -197,7 +234,7 @@
 	</button>
 
 	{#if open}
-		<div class="my-panel">
+		<div class="my-panel" id="my-comments-panel">
 			<p class="my-hint">{t.myCommentsHint}</p>
 			<p class="my-hint">{t.myCommentsAccountHint}</p>
 			{#if loading && items.length === 0}

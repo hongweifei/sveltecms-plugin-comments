@@ -68,12 +68,12 @@ export const messages: Record<string, Record<string, string>> = {
 		en: 'Action failed — try again later.'
 	},
 	loadFailed: { zh: '评论加载失败。', en: 'Failed to load comments.' },
-	empty: { zh: '还没有评论，来抢沙发～', en: 'No comments yet. Be the first.' },
+	empty: { zh: '还没有评论，欢迎留下第一条。', en: 'No comments yet. Be the first to comment.' },
 	guest: { zh: '访客', en: 'Guest' },
 	reply: { zh: '回复', en: 'Reply' },
 	cancel: { zh: '取消', en: 'Cancel' },
-	like: { zh: '赞', en: 'Like' },
-	unlike: { zh: '取消赞', en: 'Unlike' },
+	like: { zh: '点赞', en: 'Like' },
+	unlike: { zh: '取消点赞', en: 'Unlike' },
 	report: { zh: '举报', en: 'Report' },
 	reported: {
 		zh: '已收到举报，感谢反馈。',
@@ -102,16 +102,16 @@ export const messages: Record<string, Record<string, string>> = {
 	// 我的评论（访客/登录用户自助管理）：没有账号也能查看、编辑、删除自己发过的评论
 	myComments: { zh: '我的评论', en: 'My comments' },
 	myCommentsHint: {
-		zh: '凭当前浏览器的访客身份管理你发过的评论：待审、已发布都能改或删。',
-		en: 'Manage your comments via this browser’s visitor identity — edit or delete pending and published ones.'
+		zh: '这里汇总你发表过的评论，待审核与已发布的都可以修改或删除。',
+		en: 'Manage the comments you have posted here; pending and published comments can both be edited or deleted.'
 	},
 	myCommentsAccountHint: {
-		zh: '评论跟访客账号走：在身份条绑定另一个渠道，换端登录仍是同一份评论；合并两个已有账号只并身份，更早的评论仍留在原账号。',
-		en: 'Comments follow the visitor account — link another channel to keep them across sign-ins. Merging accounts combines identity only; earlier comments stay with the original account.'
+		zh: '登录后可在不同设备管理同一份评论。',
+		en: 'Sign in to manage the same comments across devices.'
 	},
 	myCommentsEmpty: {
-		zh: '你还没有发表过评论。',
-		en: 'You have not posted any comments yet.'
+		zh: '发表评论后会显示在这里。',
+		en: 'Your comments will appear here once posted.'
 	},
 	myCommentsLoadFailed: {
 		zh: '加载失败，请重试。',
@@ -124,7 +124,7 @@ export const messages: Record<string, Record<string, string>> = {
 		en: 'Edit failed — try again later.'
 	},
 	captchaLabel: { zh: '验证码', en: 'Captcha' },
-	captchaPlaceholder: { zh: '输入右图字符', en: 'Type the characters' },
+	captchaPlaceholder: { zh: '输入图中字符', en: 'Type the characters' },
 	captchaFailed: {
 		zh: '验证码不正确，请重试。',
 		en: 'Captcha incorrect — please try again.'
